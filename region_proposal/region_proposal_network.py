@@ -1,5 +1,6 @@
 import os
 import torch
+import copy
 from torch import nn
 from functools import partial
 
@@ -9,6 +10,7 @@ import numpy as np
 
 from torchvision.ops import misc, feature_pyramid_network
 from torchvision.models.resnet import ResNet50_Weights, resnet50
+from torchmetrics.detection import MeanAveragePrecision
 
 from torchvision.models.detection import backbone_utils, RetinaNet, FCOS
 from torchvision.models.detection.retinanet import RetinaNetHead, _default_anchorgen
@@ -139,6 +141,7 @@ class RegionProposalNetowrk():
             os.makedirs(save_path)
 
         train_dataset, valid_dataset = datasets
+        
 
         train_loader = DataLoader(train_dataset, 
                                     batch_size=batch_size, 
@@ -163,6 +166,9 @@ class RegionProposalNetowrk():
             "valid_map_50": [],
             "valid_map_75": []
         }
+
+        best_acc = 0
+        best_model_wts = None
 
         for e in range(epochs):
             self._model.train()
@@ -195,6 +201,10 @@ class RegionProposalNetowrk():
             train_metrics = self.evaluate(train_dataset, batch_size, progress=progress)
             valid_metrics = self.evaluate(valid_dataset, batch_size, progress=progress)
             
+            if valid_metrics["map"] > best_acc:
+                best_acc = valid_metrics["map"]
+                best_model_wts = copy.deepcopy(self._model.state_dict())
+
             ### add loss
             train_hist["train_map"].append(train_metrics["map"])
             train_hist["train_map_50"].append(train_metrics["map_50"])
@@ -204,19 +214,31 @@ class RegionProposalNetowrk():
             train_hist["valid_map"].append(valid_metrics["map"])
             train_hist["valid_map_50"].append(valid_metrics["map_50"])
             train_hist["valid_map_75"].append(valid_metrics["map_75"])
+            
 
             if progress:
-                ### print training progress.
-                pass
+                print("Training Results:")
+                print(f"\tmAP@.50::.05::.95 - {train_hist['train_map']}")
+                print(f"\tmAP@.50 - {train_hist['train_map_50']}")
+                print(f"\tmAP@.75 - {train_hist['valid_map_75']}")
+                print("Validation Results:")
+                print(f"\tmAP@.50::.05::.95 - {train_hist['valid_map']}")
+                print(f"\tmAP@.50 - {train_hist['train_map_50']}")
+                print(f"\tmAP@.75 - {train_hist['valid_map_75']}")                
+
 
             if checkpoints > 0:
                 if e % checkpoints == 0:
                     self.save(save_path, f"checkpoint_{e+1}.pth")
+
+            if sched:
+                sched.step()
         
-        file_path = self.save(save_path, "final_model.pth")
+        self._model.load_state_dict(best_model_wts)
+        file_path = self.save(save_path, "best_model.pth")
 
         if progress:
-            print(f"Saved final model to '{file_path}'.")
+            print(f"Saved best model to '{file_path}' which achived a validation mAP@.5:.05:.95 of {best_acc:.4f}.")
 
         return train_hist
 
@@ -224,13 +246,41 @@ class RegionProposalNetowrk():
         """
         Proposes regions on the input data. 
         """
-        pass
+        self._model.eval()
+        with torch.no_grad():
+            X = [x.to(self.device) for x in X]
+            
+            y_hat = self._model(X)
+        
+        return y_hat
 
-    def evaluate(self, datasets, batch_size=1, progress=False):
+
+    def evaluate(self, dataset, batch_size=1, progress=False):
         """
         Evaluates the model on a dataset.
         """
-        pass
+        self._model.eval()
+
+        dataloader = DataLoader(dataset, 
+                                    batch_size=batch_size, 
+                                    shuffle=True, 
+                                    num_workers=0, ### try to change these settings if dataloading is slow.
+                                    collate_fn=__dataset_formatting,
+                                    pin_memory=False,
+                                    persistent_workers=False)
+        
+        if progress:
+            dataloader = tqdm(dataloader)
+
+        metrics = MeanAveragePrecision()
+        with torch.no_grad():
+            for X, y in dataloader:
+                y_hat = self.propose(X)
+
+                metrics.update(y_hat, y)
+
+        return metrics.compute()
+                
 
 def __dataset_formatting(data):
     """
