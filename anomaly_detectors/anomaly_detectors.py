@@ -1,3 +1,5 @@
+from constants import DETECTOR_MAP, LOSS_MAP
+
 class AnomalyDetectorModel:
 	"""
 	Model for determining anomaly likelihood from input data
