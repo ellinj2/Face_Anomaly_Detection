@@ -14,12 +14,10 @@ class AnomalyDetectorModel:
 		Initializes AnomalyDetectorModel instance
 
 		Parameters:
-			detector [str] : string representation for detector model to be mapped to constants.DETECTOR_MAP
+			detector [str, class exposing __call__ and fit] : class or string representation for detector model to be mapped to constants.DETECTOR_MAP
 			kwargs : dictionary of arguments to be passed to API functions
-
-		Raises:
-			ValueWarning : detector not in DETECTOR_MAP.keys()
 		"""
+		self.detector = detector(**kwargs) if type(detector) is not str else DETECTOR_MAP[detector](**kwargs)
 
 	def __call__(self, X, **kwargs):
 		"""
@@ -59,9 +57,11 @@ class AnomalyDetectorLoss:
 		Initializes loss function
 
 		Parameters:
-			f [callable] : Loss function to be called
+			f [str, callable] : Loss function to be called. If type is str, will pull function from constants.LOSS_MAP
 			kwargs : keyword arguments to be passed to self.__call__
 		"""
+		self.f = f if type(f) is not str else LOSS_MAP[f]
+		self.args = **kwargs
 
 	def __call__(self, **kwargs):
 		"""
@@ -70,3 +70,4 @@ class AnomalyDetectorLoss:
 		Parameters:
 			kwargs : keyword arguments to be passed to self.f
 		"""
+		return self.f(self.args | **kwargs)
