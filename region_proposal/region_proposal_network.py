@@ -1,26 +1,37 @@
 import os
-import torch
 import copy
+
+import torch
+import numpy as np
+from tqdm import tqdm
+
+from torch.utils.data import DataLoader
+
 from torch import nn
 from functools import partial
 
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-import numpy as np
-
 from torchvision.ops import misc, feature_pyramid_network
 from torchvision.models import resnet
+from torchvision.models.detection import RetinaNet, FCOS, backbone_utils
+from torchvision.models.detection.retinanet import RetinaNetHead, _default_anchorgen
 
 from torchmetrics.detection import MeanAveragePrecision
 
-from torchvision.models.detection import backbone_utils, RetinaNet, FCOS
-from torchvision.models.detection.retinanet import RetinaNetHead, _default_anchorgen
 
 class RegionProposalNetwork():
-    """
-    Class to interact with the region proposal network.
-    """
-
+    """    
+    Class that implments the region proposal network.
+	Attributes:
+        device [str]: The device that model is store and computations occur.
+	Methods:
+        parameters: Get model parameters.
+        to: Move model and run all future computations to a spesfied device.
+        save: Saves model weights to a file in a spesified directroy.
+        load: Loads model weights from spesified file. 
+        fit: Trains the model on a given input, evaluating after every epoch.
+        propose: Runs inference on the model given an input.
+        evaluate: Evaluates the model on a given input and returns metrics.
+	"""
     def __init__(self, 
                 model_type, 
                 backbone_type,
@@ -29,7 +40,23 @@ class RegionProposalNetwork():
                 pretrained_backbone=True, 
                 progress=False, 
                 **kwargs):
+        """
+        Initializes an instance of RegionProposalNetwork.
 
+        Parameters:
+			model_type [str]: String representing the desired object detection model.
+                                Avaiable options are 'retinanet' and 'fcos'.
+            backbone_type [str]: String representing the desired resnet backbone for detector.
+                                    Avaiable options are '18', '34', '50', '101', and '152'.
+            load_path [str]: Optional path to file containing model weights to load into model. (Default: None)
+            trainable_backbone_layers [int]: Intiger between 0 and 5 indicating the number of trainable layers in 
+                                                backbone. 5 means all layers are trainable. If backbone is not 
+                                                pretrained do not use this argument. If backbone is pretrained 
+                                                and argument is not spesified it defaults to 3.
+            pretrained_backbone [bool]: If True the backbone is loaded with pretrained weights on imagenet dataset. (Default: True)
+            progress [bool]: If True the backbone pretrained weights download progress bar is displayed. (Default: False) 
+			kwargs: Dictionary of the arguments to be passed to the detector API.
+        """
         if pretrained_backbone and trainable_backbone_layers is None:
             trainable_backbone_layers = 3
 
@@ -44,7 +71,7 @@ class RegionProposalNetwork():
         elif model_type == "fcos":
             self._model = self.__fcos(backbone, **kwargs)
         else:
-            raise ValueError(f"Model type '{model_type}' is not an available model type. Avaiable options are retinanet and fcos.")
+            raise ValueError(f"Model type '{model_type}' is not an available model type. Avaiable options are 'retinanet' and 'fcos'.")
 
         self.to(torch.device('cpu')) # defaults to CPU.
         
@@ -54,6 +81,14 @@ class RegionProposalNetwork():
     def __retinanet(self, backbone, **kwargs):
         """
         Builds RetinaNet model.
+
+        Parameters:
+			backbone [TBD]: Model to be used as the backbone for the RetinaNet object detector.
+            kwargs: Dictionary of arguments to be passed to the RetinaNet detector API.
+                    API Docs: https://pytorch.org/vision/0.12/_modules/torchvision/models/detection/retinanet.html
+
+        Returns:
+            [TBD]: RetinaNet model with one object detection.
         """
         anchor_generator = _default_anchorgen()
 
@@ -70,17 +105,40 @@ class RegionProposalNetwork():
     def __fcos(self, backbone, **kwargs):
         """
         Builds FCOS model.
+
+        Parameters:
+			backbone [TBD]: Model to be used as the backbone for the FCOS object detector.
+            kwargs: Dictionary of arguments to be passed to the FCOS detector API.
+                    API Docs: https://pytorch.org/vision/main/_modules/torchvision/models/detection/fcos.html
+
+        Returns:
+            [TBD]: FCOS model with one object detection.
         """
         return FCOS(backbone, num_classes=2, **kwargs)
 
-    def __resnet_backbone(object_detector, resnet_type, trainable_backbone_layers=3, pretrained_backbone=True, progress=False):
+    def __resnet_backbone(object_detector, resnet_type, trainable_backbone_layers=None, pretrained_backbone=True, progress=False):
         """
-        Builds backbones model.
+        Builds ResNet backbones. 
 
-        Code inspired by:
+        Parameters:
+			object_detector [str]: String representing the desired object detection model.
+                                    Avaiable options are 'retinanet' and 'fcos'.
+            resnet_type [str]: String representing the desired resnet backbone for detector.
+                                    Avaiable options are '18', '34', '50', '101', and '152'.
+            trainable_backbone_layers [int]: Intiger between 0 and 5 indicating the number of trainable layers in 
+                                                backbone. 5 means all layers are trainable. If backbone is not 
+                                                pretrained do not use this argument. If backbone is pretrained 
+                                                and argument is not spesified it defaults to 3.
+            pretrained_backbone [bool]: If True the backbone is loaded with pretrained weights on imagenet dataset. (Default: True)
+            progress [bool]: If True the backbone pretrained weights download progress bar is displayed. (Default: False) 
+        
+        Code inspired and influenced by:
                 https://github.com/pytorch/vision/blob/ce257ef78b9da0430a47d387b8e6b175ebaf94ce/torchvision/models/detection/fcos.py#L676-L769
                 https://github.com/pytorch/vision/blob/ce257ef78b9da0430a47d387b8e6b175ebaf94ce/torchvision/models/detection/retinanet.py#L826-L895
         """
+        if pretrained_backbone and trainable_backbone_layers is None:
+            trainable_backbone_layers = 3
+
         if resnet_type == "18":
             weights = resnet.ResNet18_Weights.IMAGENET1K_V1
             backbone = resnet.resnet18
@@ -97,7 +155,7 @@ class RegionProposalNetwork():
             weights = resnet.ResNet152_Weights.IMAGENET1K_V2
             backbone = resnet.resnet152
         else:
-            raise ValueError("The provided resnet type does is not supported. Avaiable options are 19, 34, 50, 101, and 152.")
+            raise ValueError("The provided resnet type does is not supported. Avaiable options are '19', '34', '50', '101', and '152'.")
         
         backbone_weights = None
         if pretrained_backbone:
@@ -123,12 +181,18 @@ class RegionProposalNetwork():
     def parameters(self):
         """
         Returns the model parameters.
+
+        Returns:
+            [TBD]: Object detector parameters.
         """
         return self._model.parameters()
 
     def to(self, device):
         """
         Loads and performs computations on the model and input data to specified device.
+
+        Parameters:
+            device [str]: Name of the device to load model too.
         """
         try:
             self._model.to(device)
@@ -139,6 +203,13 @@ class RegionProposalNetwork():
     def save(self, save_path, save_name):
         """
         Save the model to specified path.
+        
+        Parameters:
+            save_path [str]: Path to directory to save model weights too.
+            save_name [str]: Name of the model weights file. Must include a '.pth' file extention.
+
+        Returns:
+            [str]: Path the file the model weights were saved too.
         """
         save_file = os.path.join(save_path, save_name)
         torch.save(self._model.state_dict(), save_file)
@@ -148,12 +219,28 @@ class RegionProposalNetwork():
     def load(self, load_path):
         """
         Load the model from spesified path.
+
+        Parameters:
+            load_path [str]: Path to file to load model weights from. Note that this instance of RegionProposalNetwork have been 
+                                initialized with the same model configuration as the weight file.
         """
         self._model.load_state_dict(torch.load(load_path, map_location=self.device))
 
     def fit(self, epochs, datasets, batch_size, optimizer, save_path, checkpoints=0, progress=False):
         """
-        Fits the model to the training dataset and evaluates on the validation dataset
+        Fits the model to the training dataset and evaluates on the validation dataset.
+
+        Parameters:
+            epochs [int]: CHANGEME
+            datasets [tuple]: CHANGEME
+            batch_size [int]: CHANGEME
+            optimizer [TBD]: CHANGEME
+            save_path [str]: CHANGEME
+            checkpoints [int]: CHANGEME
+            progress [bool]:  CHANGEME
+
+        Returns:
+            [dict]: CHANGEME
         """
         if not os.path.isdir(save_path):
             os.makedirs(save_path)
@@ -263,6 +350,12 @@ class RegionProposalNetwork():
     def propose(self, X):
         """
         Proposes regions on the input data. 
+
+        Parameters:
+            X [TBD]: CHANGEME
+
+        Returns:
+            [TBD]: CHANGEME
         """
         self._model.eval()
         with torch.no_grad():
@@ -276,6 +369,14 @@ class RegionProposalNetwork():
     def evaluate(self, dataset, batch_size=1, progress=False):
         """
         Evaluates the model on a dataset.
+
+        Parameters:
+            dataset [TBD]: CHANGEME
+            batch_size [int]: CHANGEME
+            progress [bool]: CHANGEME
+
+        Returns:
+            [dict]: CHANGEME
         """
         self._model.eval()
 
