@@ -9,20 +9,22 @@ from tqdm import tqdm
 import numpy as np
 
 from torchvision.ops import misc, feature_pyramid_network
-from torchvision.models.resnet import ResNet50_Weights, resnet50
+from torchvision.models import resnet
+
 from torchmetrics.detection import MeanAveragePrecision
 
 from torchvision.models.detection import backbone_utils, RetinaNet, FCOS
 from torchvision.models.detection.retinanet import RetinaNetHead, _default_anchorgen
 
-class RegionProposalNetowrk():
+class RegionProposalNetwork():
     """
     Class to interact with the region proposal network.
     """
 
     def __init__(self, 
                 model_type, 
-                load_path=None, 
+                backbone_type,
+                load_path=None,
                 trainable_backbone_layers=None, 
                 pretrained_backbone=True, 
                 progress=False, 
@@ -31,42 +33,28 @@ class RegionProposalNetowrk():
         if pretrained_backbone and trainable_backbone_layers is None:
             trainable_backbone_layers = 3
 
+        backbone = self.__resnet_backbone(model_type, 
+                                            backbone_type, 
+                                            trainable_backbone_layers, 
+                                            pretrained_backbone, 
+                                            progress)
+
         if model_type == "retinanet":
-            self._model = self.__retinanet(trainable_backbone_layers, 
-                                            pretrained_backbone=True, 
-                                            progress=progress, 
-                                            **kwargs)
+            self._model = self.__retinanet(backbone, **kwargs)
         elif model_type == "fcos":
-            self._model = self.__fcos(trainable_backbone_layers, 
-                                        pretrained_backbone=True, 
-                                        progress=progress, 
-                                        **kwargs)
+            self._model = self.__fcos(backbone, **kwargs)
         else:
-            raise ValueError(f"Model type '{model_type}' is not an available model type.")
+            raise ValueError(f"Model type '{model_type}' is not an available model type. Avaiable options are retinanet and fcos.")
 
         self.to(torch.device('cpu')) # defaults to CPU.
         
         if load_path:
             self.load(load_path)
 
-
-    def __retinanet(self, trainable_backbone_layers=3, pretrained_backbone=True, progress=False, **kwargs):
+    def __retinanet(self, backbone, **kwargs):
         """
         Builds RetinaNet model.
-        Code inspired by:
-            https://github.com/pytorch/vision/blob/ce257ef78b9da0430a47d387b8e6b175ebaf94ce/torchvision/models/detection/retinanet.py#L826-L895
         """
-        backbone_weights = None
-        if pretrained_backbone:
-            backbone_weights = ResNet50_Weights.IMAGENET1K_V2
-
-        trainable_backbone_layers = backbone_utils._validate_trainable_layers(pretrained_backbone, trainable_backbone_layers, 5, 3)
-        
-        backbone = resnet50(weights=backbone_weights, progress=progress)
-
-        backbone = backbone_utils._resnet_fpn_extractor(
-            backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=feature_pyramid_network.LastLevelP6P7(2048, 256))
-
         anchor_generator = _default_anchorgen()
 
         head = RetinaNetHead(
@@ -77,29 +65,60 @@ class RegionProposalNetowrk():
         )
 
         head.regression_head._loss_type = "giou"
-        return RetinaNet(backbone, 2, anchor_generator=anchor_generator, head=head, **kwargs)
+        return RetinaNet(backbone, num_classes=2, anchor_generator=anchor_generator, head=head, **kwargs)
 
-
-    def __fcos(self, trainable_backbone_layers, pretrained_backbone=True, progress=False, **kwargs):
+    def __fcos(self, backbone, **kwargs):
         """
         Builds FCOS model.
-        Code inspired by:
-            https://github.com/pytorch/vision/blob/ce257ef78b9da0430a47d387b8e6b175ebaf94ce/torchvision/models/detection/fcos.py#L676-L769
         """
-        backbone_weights = None
-        if pretrained_backbone:
-            backbone_weights = ResNet50_Weights.IMAGENET1K_V2
-        
-        trainable_backbone_layers = backbone_utils._validate_trainable_layers(pretrained_backbone, trainable_backbone_layers, 5, 3)
-        norm_layer = misc.FrozenBatchNorm2d if pretrained_backbone else nn.BatchNorm2d
-
-        backbone = resnet50(weights=backbone_weights, progress=progress, norm_layer=norm_layer)
-        backbone = backbone_utils._resnet_fpn_extractor(
-            backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=feature_pyramid_network.LastLevelP6P7(256, 256)
-        )
-
         return FCOS(backbone, num_classes=2, **kwargs)
 
+    def __resnet_backbone(object_detector, resnet_type, trainable_backbone_layers=3, pretrained_backbone=True, progress=False):
+        """
+        Builds backbones model.
+
+        Code inspired by:
+                https://github.com/pytorch/vision/blob/ce257ef78b9da0430a47d387b8e6b175ebaf94ce/torchvision/models/detection/fcos.py#L676-L769
+                https://github.com/pytorch/vision/blob/ce257ef78b9da0430a47d387b8e6b175ebaf94ce/torchvision/models/detection/retinanet.py#L826-L895
+        """
+        if resnet_type == "18":
+            weights = resnet.ResNet18_Weights.IMAGENET1K_V1
+            backbone = resnet.resnet18
+        elif resnet_type == "34":
+            weights = resnet.ResNet34_Weights.IMAGENET1K_V1
+            backbone = resnet.resnet34
+        elif resnet_type == "50":
+            weights = resnet.ResNet50_Weights.IMAGENET1K_V2
+            backbone = resnet.resnet50
+        elif resnet_type == "101":
+            weights = resnet.ResNet101_Weights.IMAGENET1K_V2
+            backbone = resnet.resnet101
+        elif resnet_type == "152":
+            weights = resnet.ResNet152_Weights.IMAGENET1K_V2
+            backbone = resnet.resnet152
+        else:
+            raise ValueError("The provided resnet type does is not supported. Avaiable options are 19, 34, 50, 101, and 152.")
+        
+        backbone_weights = None
+        if pretrained_backbone:
+            backbone_weights = weights
+
+        trainable_backbone_layers = backbone_utils._validate_trainable_layers(pretrained_backbone, trainable_backbone_layers, 5, 3)
+
+        if object_detector == "retinanet":
+            backbone = backbone(weights=backbone_weights, progress=progress)
+            extra_block = feature_pyramid_network.LastLevelP6P7(2048, 256)
+        elif object_detector == "fcos":
+            norm_layer = misc.FrozenBatchNorm2d if pretrained_backbone else nn.BatchNorm2d
+            backbone = backbone(weights=backbone_weights, progress=progress, norm_layer=norm_layer)
+            extra_block = feature_pyramid_network.LastLevelP6P7(2048, 256)
+        else:
+            raise ValueError("The provided object detector type is not supported. Avaiable options are retinanet and fcos.")
+
+        backbone = backbone_utils._resnet_fpn_extractor(
+            backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=extra_block)
+
+        return backbone
 
     def parameters(self):
         """
@@ -115,8 +134,7 @@ class RegionProposalNetowrk():
             self._model.to(device)
             self.device = device
         except Exception as e:
-            raise Exception(e)
-         
+            raise Exception(e)  
 
     def save(self, save_path, save_name):
         """
@@ -276,7 +294,6 @@ class RegionProposalNetowrk():
         with torch.no_grad():
             for X, y in dataloader:
                 y_hat = self.propose(X)
-
                 metrics.update(y_hat, y)
 
         return metrics.compute()
@@ -293,5 +310,3 @@ def __dataset_formatting(data):
         targets.append(d[1])
         
     return images, targets
-
-

@@ -13,5 +13,10 @@ data/in-the-wild-images/train/
 data/wider_face/train/
 data/wider_face/test/
 
-.ipynb_checkpoints
+# files
 *.ipynb
+
+# folders
+data
+.ipynb_checkpoints
+>>>>>>> e160185... Added backbone options.

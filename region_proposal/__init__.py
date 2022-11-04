@@ -1,1 +1,1 @@
-from region_proposal_network import RegionProposalNetowrk
+from region_proposal_network import RegionProposalNetwork
