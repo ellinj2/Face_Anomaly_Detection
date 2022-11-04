@@ -1,0 +1,6 @@
+# files
+*.ipynb
+
+# folders
+data
+.ipynb_checkpoints
