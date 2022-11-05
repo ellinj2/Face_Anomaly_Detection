@@ -226,21 +226,23 @@ class RegionProposalNetwork():
         """
         self._model.load_state_dict(torch.load(load_path, map_location=self.device))
 
-    def fit(self, epochs, datasets, batch_size, optimizer, save_path, checkpoints=0, progress=False):
+    def fit(self, epochs, datasets, batch_size, optimizer, save_path, checkpoints=0, progress=True):
         """
         Fits the model to the training dataset and evaluates on the validation dataset.
 
         Parameters:
-            epochs [int]: CHANGEME
-            datasets [tuple]: CHANGEME
-            batch_size [int]: CHANGEME
-            optimizer [TBD]: CHANGEME
-            save_path [str]: CHANGEME
-            checkpoints [int]: CHANGEME
-            progress [bool]:  CHANGEME
+            epochs [int]: Number of training iterations over the data.
+            datasets [tuple]: A tuple containing the training dataset as the first element and the validation dataset 
+                                as the second element.
+            batch_size [int]: Number of images to batch for training and evaluaton.
+            optimizer [TBD|tuple]: Either an optimizer or a tuple contain a learning rate scheduler as the first element 
+                                    and an optimizer as the second element.
+            save_path [str]: Path to save model checkpoints.
+            checkpoints [int]: Integer N reprisenting after every N epochs to create a model checkpoint. If 0, only save the best model. (Default: 0)
+            progress [bool]: Report training progress. (Default: True)
 
         Returns:
-            [dict]: CHANGEME
+            [dict]: Dictionary of model training history.
         """
         if not os.path.isdir(save_path):
             os.makedirs(save_path)
@@ -256,10 +258,7 @@ class RegionProposalNetwork():
                                     pin_memory=False,
                                     persistent_workers=False)
 
-        if isinstance(optimizer, tuple):
-            sched, optim = optimizer
-        else:
-            sched, optim = (None, optimizer)
+        sched, optim = optimizer if isinstance(optimizer, tuple) else (None, optimizer)
 
         train_hist = {
             "train_loss": [],
@@ -303,8 +302,8 @@ class RegionProposalNetwork():
                 if progress:
                     train_e_loader.set_description(desc=f"Training loss: {loss/(i+1):.4f}")
 
-            train_metrics = self.evaluate(train_dataset, batch_size, progress=progress)
-            valid_metrics = self.evaluate(valid_dataset, batch_size, progress=progress)
+            train_metrics = self.evaluate(train_dataset, batch_size)
+            valid_metrics = self.evaluate(valid_dataset, batch_size)
             
             if valid_metrics["map"] > best_acc:
                 best_acc = valid_metrics["map"]
@@ -352,10 +351,10 @@ class RegionProposalNetwork():
         Proposes regions on the input data. 
 
         Parameters:
-            X [TBD]: CHANGEME
+            X [TBD]: Image data to propose regions on.
 
         Returns:
-            [TBD]: CHANGEME
+            [list]: List of dictionaries with region proposals for each image in X.
         """
         self._model.eval()
         with torch.no_grad():
@@ -371,12 +370,12 @@ class RegionProposalNetwork():
         Evaluates the model on a dataset.
 
         Parameters:
-            dataset [TBD]: CHANGEME
-            batch_size [int]: CHANGEME
-            progress [bool]: CHANGEME
+            dataset [TBD]: Dataset to use for model evaluation.
+            batch_size [int]: Number of images to batch for each evaluaton. (Default: 1)
+            progress [bool]: Report evaluation progress. (Default: True)
 
         Returns:
-            [dict]: CHANGEME
+            [dict]: Dictionary of evaluation results.
         """
         self._model.eval()
 
