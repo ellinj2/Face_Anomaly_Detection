@@ -1,0 +1,7 @@
+.venv/
+
+# images created in testing
+loader/*.png
+
+# big metadata file
+ffhq-dataset-v2.json
