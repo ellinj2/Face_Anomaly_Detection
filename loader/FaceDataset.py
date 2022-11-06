@@ -46,9 +46,11 @@ class FFHQFaceDataset(Dataset):
 		
 		records = self.df.loc[index]
 
-		image = cv2.imread("{0}/{1:05}/{2:05}.png".format(self.image_dir,index-(index%1000),index),cv2.IMREAD_COLOR)
+		image_bgr = cv2.imread("{0}/{1:05}/{2:05}.png".format(self.image_dir,index-(index%1000),index),cv2.IMREAD_COLOR)
 
-		tensor = self.transform(image)
+		image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+
+		tensor = self.transform(image_rgb)
 
 		landmarks = records["in_the_wild"]["face_landmarks"]
 
@@ -104,9 +106,11 @@ class WFFaceDataset(Dataset):
 		row = self.df[self.df["Name"] == image_id]
 		bbox = row.BBox.values[0]
 
-		image = cv2.imread("{0}/{1}".format(self.image_dir,image_id),cv2.IMREAD_COLOR)
+		image_bgr = cv2.imread("{0}/{1}".format(self.image_dir,image_id),cv2.IMREAD_COLOR)
 
-		tensor = self.transform(image)
+		image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+
+		tensor = self.transform(image_rgb)
 
 		return tensor, bbox, image_id
 
@@ -144,16 +148,16 @@ class WFFaceDataset(Dataset):
 				i+=1
 				num_boxes = max(int(all_data[i]),1)
 				i+=1
-				boxes = np.zeros(shape=(num_boxes,4))
+				boxes = np.zeros(shape=(num_boxes,4),dtype=np.float32)
 				for j in range(num_boxes):
 					box_data = all_data[i+j]
 					box_data = box_data.strip().split(" ")
-					boxes[j][0] = int(box_data[0])
-					boxes[j][1] = int(box_data[1])
-					boxes[j][2] = boxes[j][0] + int(box_data[2])
-					boxes[j][3] = boxes[j][1] + int(box_data[3])
+					boxes[j][0] = float(box_data[0])
+					boxes[j][1] = float(box_data[1])
+					boxes[j][2] = boxes[j][0] + float(box_data[2])
+					boxes[j][3] = boxes[j][1] + float(box_data[3])
 				i+=num_boxes
-				new_row = pd.Series({'Name':img_name, 'BBox':boxes})
+				new_row = pd.Series({'Name':img_name, 'BBox':torch.from_numpy(boxes)})
 				self.df = pd.concat([self.df,new_row.to_frame().T],ignore_index=True)
 				self.prog_bar(i,len(all_data))
 		print()
@@ -162,7 +166,7 @@ class WFFaceDataset(Dataset):
 
 if __name__ == '__main__':
 	# Just a quick little test you can try
-	test_ffhq = True
+	test_ffhq = False
 	test_wf = True
 
 	if test_ffhq:
