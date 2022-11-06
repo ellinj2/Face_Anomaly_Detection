@@ -5,3 +5,10 @@ loader/*.png
 
 # big metadata file
 ffhq-dataset-v2.json
+
+# images
+data/in-the-wild-images/test/
+data/in-the-wild-images/train/
+
+data/wider_face/train/
+data/wider_face/test/
