@@ -326,7 +326,6 @@ class RegionProposalNetwork():
             train_hist["valid_map_50"].append(valid_metrics["map_50"])
             train_hist["valid_map_75"].append(valid_metrics["map_75"])
             
-
             if progress:
                 print("Training Results:")
                 print(f"\tmAP@.50::.05::.95 - {train_hist['train_map']}")
@@ -335,8 +334,7 @@ class RegionProposalNetwork():
                 print("Validation Results:")
                 print(f"\tmAP@.50::.05::.95 - {train_hist['valid_map']}")
                 print(f"\tmAP@.50 - {train_hist['train_map_50']}")
-                print(f"\tmAP@.75 - {train_hist['valid_map_75']}")                
-
+                print(f"\tmAP@.75 - {train_hist['valid_map_75']}")
 
             if checkpoints > 0:
                 if e % checkpoints == 0:
@@ -404,6 +402,7 @@ class RegionProposalNetwork():
                 y = [{"boxes": t.to(self.device), "labels": torch.ones(len(t), dtype=torch.int64).to(self.device)} for t in y]
                 y_hat = self.propose(X)
                 metrics.update(y_hat, y)
+                print(metrics.compute())
 
         return metrics.compute()
                 
