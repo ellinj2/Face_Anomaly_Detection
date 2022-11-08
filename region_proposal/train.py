@@ -33,6 +33,7 @@ def main(args):
     save_path = args.save_path
     checkpoints = args.checkpoints
 
+    # check command line args...
     if epochs <= 0:
         print(f"Epochs must be a postive integer but was {epochs}.")
         sys.exit()
@@ -77,10 +78,12 @@ def main(args):
     if not os.path.isdir(save_path):
         os.makedirs(save_path)
 
+    # load datasets.
     print("Loading Training Dataset...")
     train_dataset = WFFaceDataset(train_txt, train_data_path)
     print("Loading Validation Dataset...")
     valid_dataset = WFFaceDataset(valid_txt, valid_data_path)
+
 
     model = RegionProposalNetwork(model_type, backbone_type)
     optim = Adam(model.parameters(), lr)
@@ -93,6 +96,7 @@ def main(args):
                 checkpoints=checkpoints, 
                 progress=True)
 
+    # save training results.
     with open(os.path.join(save_path, "training_history.json"), "w") as f:
         json.dump(hist, f, indent=1)
 
@@ -101,4 +105,3 @@ def main(args):
 if __name__ == "__main__":
     args = get_arg_parser().parse_args()
     main(args)
-    

@@ -78,9 +78,6 @@ class RegionProposalNetwork():
         if load_path:
             self.load(load_path)
 
-        # from torchvision.models.detection import retinanet_resnet50_fpn_v2
-        # self._model = retinanet_resnet50_fpn_v2()
-
     def __retinanet(self, backbone, **kwargs):
         """
         Builds RetinaNet model.
@@ -316,12 +313,10 @@ class RegionProposalNetwork():
                 best_acc = valid_metrics["map"]
                 best_model_wts = copy.deepcopy(self._model.state_dict())
 
-            ### add loss
             train_hist["train_map"].append(train_metrics["map"])
             train_hist["train_map_50"].append(train_metrics["map_50"])
             train_hist["train_map_75"].append(train_metrics["map_75"])
             
-            ### add loss
             train_hist["valid_map"].append(valid_metrics["map"])
             train_hist["valid_map_50"].append(valid_metrics["map_50"])
             train_hist["valid_map_75"].append(valid_metrics["map_75"])
@@ -400,9 +395,9 @@ class RegionProposalNetwork():
             for X, y in dataloader:
                 X = [x.to(self.device) for x in X]
                 y = [{"boxes": t.to(self.device), "labels": torch.ones(len(t), dtype=torch.int64).to(self.device)} for t in y]
+                
                 y_hat = self.propose(X)
                 metrics.update(y_hat, y)
-                print(metrics.compute())
 
         return metrics.compute()
                 
