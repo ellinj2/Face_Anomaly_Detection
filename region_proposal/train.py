@@ -12,13 +12,13 @@ def get_arg_parser():
     import argparse
 
     parser = argparse.ArgumentParser(description="Train the region proposal network.")
-    parser.add_argument("data_path", type=str, help="String representing the desired object detection model. Avaiable options are 'retinanet' and 'fcos'.")
-    parser.add_argument("model_type", type=str, help="String representing the desired resnet backbone for detector. Avaiable options are '18', '34', '50', '101', and '152'.")
-    parser.add_argument("backbone_type", type=str, help="Path to folder with a train and validation subfolders.")
+    parser.add_argument("data_path", type=str, help="Path to folder with a train and validation subfolders.")
+    parser.add_argument("model_type", type=str, help="String representing the desired object detection model. Avaiable options are 'retinanet' and 'fcos'.")
+    parser.add_argument("backbone_type", type=str, help="String representing the desired resnet backbone for detector. Avaiable options are 'resnet18', 'resnet34', 'resnet50', 'resnet101', and 'resnet152'.")
     parser.add_argument("epochs", type=int, help="Number of training iterations over the data.")
     parser.add_argument("batch_size", type=int, help="Number of images to batch for training and evaluaton.")
     parser.add_argument("learning_rate", type=float, help="Float reprisenting the learning rate.")
-    parser.add_argument("save_path", type=str, help="Path to save model checkpoints.")
+    parser.add_argument("save_path", type=str, help="Path to save model checkpoints and training history.")
     parser.add_argument("checkpoints", type=int, default=0, help="Integer N reprisenting after every N epochs to create a model checkpoint. If 0, only save the best model. (Default: 0)")
 
     return parser
@@ -103,5 +103,9 @@ def main(args):
     print("Done")
 
 if __name__ == "__main__":
-    args = get_arg_parser().parse_args()
-    main(args)
+    # args = get_arg_parser().parse_args()
+    # main(args)
+
+    model = RegionProposalNetwork("retinanet", "resnet50")
+    model.load("C:\\Users\\Ohad\\Desktop\\Face_Anomaly_Detection\\test\\test_weights.pth")
+

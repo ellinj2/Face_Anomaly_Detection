@@ -1,5 +1,7 @@
+import json
 import os
 import copy
+from hashlib import sha256
 
 import torch
 import numpy as np
@@ -47,7 +49,7 @@ class RegionProposalNetwork():
 			model_type [str]: String representing the desired object detection model.
                                 Avaiable options are 'retinanet' and 'fcos'.
             backbone_type [str]: String representing the desired resnet backbone for detector.
-                                    Avaiable options are '18', '34', '50', '101', and '152'.
+                                    Avaiable options are 'resnet18', 'resnet34', 'resnet50', 'resnet101', and 'resnet152'.
             load_path [str]: Optional path to file containing model weights to load into model. (Default: None)
             trainable_backbone_layers [int]: Intiger between 0 and 5 indicating the number of trainable layers in 
                                                 backbone. 5 means all layers are trainable. If backbone is not 
@@ -75,6 +77,10 @@ class RegionProposalNetwork():
 
         self.to(torch.device('cpu')) # defaults to CPU.
         
+        self._model_metadata = {"model": model_type, 
+                                "backbone": backbone_type,
+                                "parameters": kwargs} 
+
         if load_path:
             self.load(load_path)
 
@@ -124,7 +130,7 @@ class RegionProposalNetwork():
 			object_detector [str]: String representing the desired object detection model.
                                     Avaiable options are 'retinanet' and 'fcos'.
             resnet_type [str]: String representing the desired resnet backbone for detector.
-                                    Avaiable options are '18', '34', '50', '101', and '152'.
+                                    Avaiable options are 'resnet18', 'resnet34', 'resnet50', 'resnet101', and 'resnet152'.
             trainable_backbone_layers [int]: Intiger between 0 and 5 indicating the number of trainable layers in 
                                                 backbone. 5 means all layers are trainable. If backbone is not 
                                                 pretrained do not use this argument. If backbone is pretrained 
@@ -139,28 +145,28 @@ class RegionProposalNetwork():
         if pretrained_backbone and trainable_backbone_layers is None:
             trainable_backbone_layers = 3
 
-        if resnet_type == "18":
+        if resnet_type == "resnet18":
             weights = resnet.ResNet18_Weights.IMAGENET1K_V1
             channel_out = 512
             backbone = resnet.resnet18
-        elif resnet_type == "34":
+        elif resnet_type == "resnet34":
             weights = resnet.ResNet34_Weights.IMAGENET1K_V1
             channel_out = 512
             backbone = resnet.resnet34
-        elif resnet_type == "50":
+        elif resnet_type == "resnet50":
             weights = resnet.ResNet50_Weights.IMAGENET1K_V2
             channel_out = 2048
             backbone = resnet.resnet50
-        elif resnet_type == "101":
+        elif resnet_type == "resnet101":
             weights = resnet.ResNet101_Weights.IMAGENET1K_V2
             channel_out = 2048
             backbone = resnet.resnet101
-        elif resnet_type == "152":
+        elif resnet_type == "resnet152":
             weights = resnet.ResNet152_Weights.IMAGENET1K_V2
             channel_out = 2048
             backbone = resnet.resnet152
         else:
-            raise ValueError("The provided resnet type does is not supported. Avaiable options are '19', '34', '50', '101', and '152'.")
+            raise ValueError("The provided resnet type does is not supported. Avaiable options are 'resnet18', 'resnet34', 'resnet50', 'resnet101', and 'resnet152'.")
         
         backbone_weights = None
         if pretrained_backbone:
@@ -211,15 +217,26 @@ class RegionProposalNetwork():
         
         Parameters:
             save_path [str]: Path to directory to save model weights too.
-            save_name [str]: Name of the model weights file. Must include a '.pth' file extention.
+            save_name [str]: Name of the model folder.
 
         Returns:
-            [str]: Path the file the model weights were saved too.
+            [str]: Path to the folder the model files were saved too.
         """
-        save_file = os.path.join(save_path, save_name)
-        torch.save(self._model.state_dict(), save_file)
+        save_dir = os.path.join(save_path, save_name)
+        
+        if not os.path.isdir(save_dir):
+            os.makedirs(save_dir)
 
-        return save_file
+        # save model weights.
+        model_weights = self._model.state_dict()
+        torch.save(model_weights, os.path.join(save_dir, f"{save_name}_weights.pth"))
+        
+        # save model metadata.
+        self._model_metadata["weight_hash"] = sha256(str(model_weights).encode()).hexdigest()
+        with open(os.path.join(save_dir, f"{save_name}_metadata.json"), "w") as f:
+            json.dump(self._model_metadata, f, indent=1)
+
+        return save_dir
 
     def load(self, load_path):
         """
@@ -333,13 +350,13 @@ class RegionProposalNetwork():
 
             if checkpoints > 0:
                 if e % checkpoints == 0:
-                    self.save(save_path, f"checkpoint_{e+1}.pth")
+                    self.save(save_path, f"checkpoint_{e+1}")
 
             if sched:
                 sched.step()
         
         self._model.load_state_dict(best_model_wts)
-        file_path = self.save(save_path, "best_model.pth")
+        file_path = self.save(save_path, "best_model")
 
         if progress:
             print(f"Saved best model to '{file_path}' which achived a validation mAP@.5:.05:.95 of {best_acc:.4f}.")
