@@ -20,6 +20,7 @@ def get_arg_parser():
     parser.add_argument("learning_rate", type=float, help="Float reprisenting the learning rate.")
     parser.add_argument("save_path", type=str, help="Path to save model checkpoints and training history.")
     parser.add_argument("checkpoints", type=int, default=0, help="Integer N reprisenting after every N epochs to create a model checkpoint. If 0, only save the best model. (Default: 0)")
+    parser.add_argument("-c", "--cuda", action="store_true", help="Set flag if model should be loaded and trained on a GPU. By default the model will run on cpu.")
 
     return parser
 
@@ -32,6 +33,7 @@ def main(args):
     lr = args.learning_rate
     save_path = args.save_path
     checkpoints = args.checkpoints
+    cuda = args.cuda
 
     # check command line args...
     if epochs <= 0:
@@ -84,8 +86,10 @@ def main(args):
     print("Loading Validation Dataset...")
     valid_dataset = WFFaceDataset(valid_txt, valid_data_path)
 
-
     model = RegionProposalNetwork(model_type, backbone_type)
+    if cuda:
+        model.to("cuda:0")
+
     optim = Adam(model.parameters(), lr)
 
     hist = model.fit(epochs=epochs, 
@@ -103,9 +107,5 @@ def main(args):
     print("Done")
 
 if __name__ == "__main__":
-    # args = get_arg_parser().parse_args()
-    # main(args)
-
-    model = RegionProposalNetwork("retinanet", "resnet50")
-    model.load("C:\\Users\\Ohad\\Desktop\\Face_Anomaly_Detection\\test\\test_weights.pth")
-
+    args = get_arg_parser().parse_args()
+    main(args)
