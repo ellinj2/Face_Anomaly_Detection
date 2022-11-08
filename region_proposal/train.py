@@ -12,9 +12,9 @@ def get_arg_parser():
     import argparse
 
     parser = argparse.ArgumentParser(description="Train the region proposal network.")
-    parser.add_argument("data_path", type=str, help="String representing the desired object detection model. Avaiable options are 'retinanet' and 'fcos'.")
-    parser.add_argument("model_type", type=str, help="String representing the desired resnet backbone for detector. Avaiable options are '18', '34', '50', '101', and '152'.")
-    parser.add_argument("backbone_type", type=str, help="Path to folder with a train and validation subfolders.")
+    parser.add_argument("data_path", type=str, help="Path to folder with a train and validation subfolders.")
+    parser.add_argument("model_type", type=str, help="String representing the desired object detection model. Avaiable options are 'retinanet' and 'fcos'.")
+    parser.add_argument("backbone_type", type=str, help="String representing the desired resnet backbone for detector. Avaiable options are '18', '34', '50', '101', and '152'.Path to folder with a train and validation subfolders.")
     parser.add_argument("epochs", type=int, help="Number of training iterations over the data.")
     parser.add_argument("batch_size", type=int, help="Number of images to batch for training and evaluaton.")
     parser.add_argument("learning_rate", type=float, help="Float reprisenting the learning rate.")
