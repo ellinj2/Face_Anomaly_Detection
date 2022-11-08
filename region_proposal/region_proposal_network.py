@@ -78,6 +78,9 @@ class RegionProposalNetwork():
         if load_path:
             self.load(load_path)
 
+        # from torchvision.models.detection import retinanet_resnet50_fpn_v2
+        # self._model = retinanet_resnet50_fpn_v2()
+
     def __retinanet(self, backbone, **kwargs):
         """
         Builds RetinaNet model.
@@ -116,7 +119,7 @@ class RegionProposalNetwork():
         """
         return FCOS(backbone, num_classes=2, **kwargs)
 
-    def __resnet_backbone(object_detector, resnet_type, trainable_backbone_layers=None, pretrained_backbone=True, progress=False):
+    def __resnet_backbone(self, object_detector, resnet_type, trainable_backbone_layers=None, pretrained_backbone=True, progress=False):
         """
         Builds ResNet backbones. 
 
@@ -141,18 +144,23 @@ class RegionProposalNetwork():
 
         if resnet_type == "18":
             weights = resnet.ResNet18_Weights.IMAGENET1K_V1
+            channel_out = 512
             backbone = resnet.resnet18
         elif resnet_type == "34":
             weights = resnet.ResNet34_Weights.IMAGENET1K_V1
+            channel_out = 512
             backbone = resnet.resnet34
         elif resnet_type == "50":
             weights = resnet.ResNet50_Weights.IMAGENET1K_V2
+            channel_out = 2048
             backbone = resnet.resnet50
         elif resnet_type == "101":
             weights = resnet.ResNet101_Weights.IMAGENET1K_V2
+            channel_out = 2048
             backbone = resnet.resnet101
         elif resnet_type == "152":
             weights = resnet.ResNet152_Weights.IMAGENET1K_V2
+            channel_out = 2048
             backbone = resnet.resnet152
         else:
             raise ValueError("The provided resnet type does is not supported. Avaiable options are '19', '34', '50', '101', and '152'.")
@@ -165,11 +173,11 @@ class RegionProposalNetwork():
 
         if object_detector == "retinanet":
             backbone = backbone(weights=backbone_weights, progress=progress)
-            extra_block = feature_pyramid_network.LastLevelP6P7(2048, 256)
+            extra_block = feature_pyramid_network.LastLevelP6P7(channel_out, 256)
         elif object_detector == "fcos":
             norm_layer = misc.FrozenBatchNorm2d if pretrained_backbone else nn.BatchNorm2d
             backbone = backbone(weights=backbone_weights, progress=progress, norm_layer=norm_layer)
-            extra_block = feature_pyramid_network.LastLevelP6P7(2048, 256)
+            extra_block = feature_pyramid_network.LastLevelP6P7(256, 256)
         else:
             raise ValueError("The provided object detector type is not supported. Avaiable options are retinanet and fcos.")
 
@@ -254,7 +262,7 @@ class RegionProposalNetwork():
                                     batch_size=batch_size, 
                                     shuffle=True, 
                                     num_workers=0, ### try to change these settings if dataloading is slow.
-                                    collate_fn=__dataset_formatting,
+                                    collate_fn=self.__dataset_formatting,
                                     pin_memory=False,
                                     persistent_workers=False)
 
@@ -288,9 +296,8 @@ class RegionProposalNetwork():
             loss = 0
             for i, (X, y) in enumerate(train_e_loader):
                 X = [x.to(self.device) for x in X]
-                y = [{k: v.to(self.device) for k, v in t.items()} for t in y]
-
-                loss_dict = self.model(X, y)
+                y = [{"boxes": t.to(self.device), "labels": torch.ones(len(t), dtype=torch.int64).to(self.device)} for t in y]
+                loss_dict = self._model(X, y)
 
                 batch_loss = sum(b_loss for b_loss in loss_dict.values())
                 loss += batch_loss.item()
@@ -383,7 +390,7 @@ class RegionProposalNetwork():
                                     batch_size=batch_size, 
                                     shuffle=True, 
                                     num_workers=0, ### try to change these settings if dataloading is slow.
-                                    collate_fn=__dataset_formatting,
+                                    collate_fn=self.__dataset_formatting,
                                     pin_memory=False,
                                     persistent_workers=False)
         
@@ -393,20 +400,22 @@ class RegionProposalNetwork():
         metrics = MeanAveragePrecision()
         with torch.no_grad():
             for X, y in dataloader:
+                X = [x.to(self.device) for x in X]
+                y = [{"boxes": t.to(self.device), "labels": torch.ones(len(t), dtype=torch.int64).to(self.device)} for t in y]
                 y_hat = self.propose(X)
                 metrics.update(y_hat, y)
 
         return metrics.compute()
                 
 
-def __dataset_formatting(data):
-    """
-    Formats data from dataset object to model compatiable data structure.
-    """
-    images, targets = [], []
-    
-    for d in data:
-        images.append(d[0])
-        targets.append(d[1])
+    def __dataset_formatting(self, data):
+        """
+        Formats data from dataset object to model compatiable data structure.
+        """
+        images, targets = [], []
         
-    return images, targets
+        for d in data:
+            images.append(d[0])
+            targets.append(d[1])
+            
+        return images, targets
