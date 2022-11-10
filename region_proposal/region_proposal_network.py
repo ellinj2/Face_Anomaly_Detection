@@ -461,7 +461,7 @@ class RegionProposalNetwork():
                 y_hats = self.propose(X)
                 metrics.update(y_hats, y)
 
-        return metrics.compute()
+        return {k: v.item() for k, v in metrics.compute().items()}
                 
     def __nms(self, y_preds, iou_threshold, score_threshold):
         """
