@@ -134,8 +134,8 @@ class RegionProposalNetwork():
                         num_classes=2, 
                         anchor_generator=anchor_generator, 
                         head=head, 
-                        score_thresh=0.05,
-                        nms_thresh=1,
+                        # score_thresh=0.05,
+                        # nms_thresh=1,
                         **kwargs)
 
     def __fcos(self, backbone, **kwargs):
@@ -152,8 +152,8 @@ class RegionProposalNetwork():
         """
         return FCOS(backbone, 
                     num_classes=2, 
-                    score_thresh=0.05,
-                    nms_thresh=1,
+                    # score_thresh=0.05,
+                    # nms_thresh=1,
                     **kwargs)
 
     def __resnet_backbone(self, object_detector, resnet_type, trainable_backbone_layers=None, pretrained_backbone=True, progress=False):
@@ -282,7 +282,7 @@ class RegionProposalNetwork():
         """
         self._model.load_state_dict(torch.load(load_path, map_location=self.device))
 
-    def fit(self, epochs, datasets, batch_size, optimizer, save_path, checkpoints=0, progress=True):
+    def fit(self, epochs, datasets, batch_size, optimizer, save_path, checkpoints=0, progress=True, num_workers=0):
         """
         Fits the model to the training dataset and evaluates on the validation dataset.
 
@@ -296,6 +296,7 @@ class RegionProposalNetwork():
             save_path [str]: Path to save model checkpoints.
             checkpoints [int]: Integer N reprisenting after every N epochs to create a model checkpoint. If 0, only save the best model. (Default: 0)
             progress [bool]: Report training progress. (Default: True)
+            num_workers [int]: Number of workers to use for DataLoaders. (Default: 0)
 
         Returns:
             [dict]: Dictionary of model training history.
@@ -309,10 +310,17 @@ class RegionProposalNetwork():
         train_loader = DataLoader(train_dataset, 
                                     batch_size=batch_size, 
                                     shuffle=True, 
-                                    num_workers=3, ### try to change these settings if dataloading is slow.
+                                    num_workers=num_workers, ### try to change these settings if dataloading is slow.
                                     collate_fn=dataset_formatting,
                                     pin_memory=True,
-                                    persistent_workers=True)
+                                    persistent_workers=num_workers>0)
+        valid_loader = DataLoader(valid_dataset,
+                                    batch_size=batch_size,
+                                    shuffle=False,
+                                    num_workers=num_workers,
+                                    collate_fn=dataset_formatting,
+                                    pin_memory=True,
+                                    persistent_workers=num_workers>0)
 
         sched, optim = optimizer if isinstance(optimizer, tuple) else (None, optimizer)
 
@@ -321,7 +329,6 @@ class RegionProposalNetwork():
             "train_map": [],
             "train_map_50": [],
             "train_map_75": [],
-            "valid_loss": [],
             "valid_map": [],
             "valid_map_50": [],
             "valid_map_75": []
@@ -364,13 +371,14 @@ class RegionProposalNetwork():
                 if progress:
                     train_e_loader.set_description(desc=f"Training loss: {loss/(i+1):.4f}")
 
-            train_metrics = self.evaluate(train_dataset, batch_size, progress=progress)
-            valid_metrics = self.evaluate(valid_dataset, batch_size, progress=progress)
+            train_metrics = self.evaluate(train_loader, batch_size, progress=progress, num_workers=num_workers)
+            valid_metrics = self.evaluate(valid_loader, batch_size, progress=progress, num_workers=num_workers)
             
             if valid_metrics["map"] > best_acc:
                 best_acc = valid_metrics["map"]
                 best_model_wts = copy.deepcopy(self._model.state_dict())
 
+            train_hist["train_loss"].append(loss/len(train_e_loader))
             train_hist["train_map"].append(train_metrics["map"])
             train_hist["train_map_50"].append(train_metrics["map_50"])
             train_hist["train_map_75"].append(train_metrics["map_75"])
@@ -381,13 +389,13 @@ class RegionProposalNetwork():
             
             if progress:
                 print("Training Results:")
-                print(f"\tmAP@.50::.05::.95 - {train_hist['train_map']}")
-                print(f"\tmAP@.50 - {train_hist['train_map_50']}")
-                print(f"\tmAP@.75 - {train_hist['valid_map_75']}")
+                print(f"\tmAP@.50::.05::.95 - {train_hist['train_map'][-1]}")
+                print(f"\tmAP@.50 - {train_hist['train_map_50'][-1]}")
+                print(f"\tmAP@.75 - {train_hist['valid_map_75'][-1]}")
                 print("Validation Results:")
-                print(f"\tmAP@.50::.05::.95 - {train_hist['valid_map']}")
-                print(f"\tmAP@.50 - {train_hist['train_map_50']}")
-                print(f"\tmAP@.75 - {train_hist['valid_map_75']}")
+                print(f"\tmAP@.50::.05::.95 - {train_hist['valid_map'][-1]}")
+                print(f"\tmAP@.50 - {train_hist['train_map_50'][-1]}")
+                print(f"\tmAP@.75 - {train_hist['valid_map_75'][-1]}")
 
             if checkpoints > 0:
                 if e % checkpoints == 0:
@@ -415,49 +423,50 @@ class RegionProposalNetwork():
             [list]: List of dictionaries with region proposals for each image in X.
         """
         self._model.eval()
-        # prior = self.device
         with torch.no_grad():
-            # X = [x.to("cpu") for x in X] # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
-            # self.to("cpu") # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
             X = [x.to(self.device) for x in X]
             y_hats = self._model(X)
-            y_hats = self.__nms(y_hats, self.iou_threshold, self.score_threshold)
-        # self.to(prior)     # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED    
+            # print(y_hats)
+            # y_hats = self.__nms(y_hats, self.iou_threshold, self.score_threshold)
         return y_hats
 
 
-    def evaluate(self, dataset, batch_size=1, progress=False):
+    def evaluate(self, dataset, batch_size=1, progress=False, num_workers=0):
         """
         Evaluates the model on a dataset.
 
         Parameters:
-            dataset [TBD]: Dataset to use for model evaluation.
+            dataset [TBD]: Dataset or dataloader to use for model evaluation.
             batch_size [int]: Number of images to batch for each evaluaton. (Default: 1)
             progress [bool]: Report evaluation progress. (Default: True)
+            num_workers [int]: Number of workers to use for DataLoaders. (Default: 0)
 
         Returns:
             [dict]: Dictionary of evaluation results.
         """
         self._model.eval()
 
-        dataloader = DataLoader(dataset, 
-                                    batch_size=batch_size, 
-                                    shuffle=True, 
-                                    num_workers=3, ### try to change these settings if dataloading is slow.
-                                    collate_fn=dataset_formatting,
-                                    pin_memory=True,
-                                    persistent_workers=True)
-        
+        if isinstance(dataset, torch.utils.data.Dataset):
+            dataloader = DataLoader(dataset, 
+                                        batch_size=batch_size, 
+                                        shuffle=True, 
+                                        num_workers=num_workers, ### try to change these settings if dataloading is slow.
+                                        collate_fn=dataset_formatting,
+                                        pin_memory=True,
+                                        persistent_workers=num_workers>0)
+
+        else:
+            dataloader = dataset
+
         if progress:
             dataloader = tqdm(dataloader)
 
         metrics = MeanAveragePrecision()
         with torch.no_grad():
-            for X, y in tqdm(dataloader):
+            for X, y in dataloader:
                 X = [x.to(self.device) for x in X]
                 y = [{"boxes": t.to(self.device), "labels": torch.ones(len(t), dtype=torch.int64).to(self.device)} for t in y]
                 
-                # y_hats = [{k:v.to(self.device) for k,v in _y.items()} for _y in self.propose(X)] # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
                 y_hats = self.propose(X)
                 metrics.update(y_hats, y)
 

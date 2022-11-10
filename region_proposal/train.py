@@ -2,6 +2,7 @@ import os
 import sys
 import json
 from glob import glob
+import multiprocessing as mp
 
 from face_dataset import WFFaceDataset
 from region_proposal_network import RegionProposalNetwork
@@ -22,6 +23,7 @@ def get_arg_parser():
     parser.add_argument("--save_path", type=str, help="Path to save model checkpoints and training history.")
     parser.add_argument("--checkpoints", type=int, default=0, help="Integer N reprisenting after every N epochs to create a model checkpoint. If 0, only save the best model. (Default: 0)")
     parser.add_argument("-c", "--cuda", action="store_true", help="Set flag if model should be loaded and trained on a GPU. By default the model will run on cpu.")
+    parser.add_argument("--num_workers", type=int, default=mp.cpu_count(), help="Number of workers to load data")
 
     return parser
 
@@ -107,7 +109,8 @@ def main(args):
                 optimizer=optim, 
                 save_path=save_path, 
                 checkpoints=checkpoints, 
-                progress=True)
+                progress=True,
+                num_workers=args.num_workers)
 
     # save training results.
     with open(os.path.join(save_path, "training_history.json"), "w") as f:
