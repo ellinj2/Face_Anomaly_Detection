@@ -36,6 +36,8 @@ class RegionProposalNetwork():
     """    
     Class that implments the region proposal network.
 	Attributes:
+        iou_threshold [float]: Value in the range (0,1] which respensted the maximum detection overlap.
+        score_threshold [float]: Value in the range (0,1) which respensted the minimum detection score.
         device [str]: The device that model is store and computations occur.
 	Methods:
         parameters: Get model parameters.
@@ -52,6 +54,8 @@ class RegionProposalNetwork():
                 load_path=None,
                 trainable_backbone_layers=None, 
                 pretrained_backbone=True, 
+                iou_threshold=0.5,
+                score_threshold=0.5,
                 progress=False, 
                 **kwargs):
         """
@@ -68,6 +72,8 @@ class RegionProposalNetwork():
                                                 pretrained do not use this argument. If backbone is pretrained 
                                                 and argument is not spesified it defaults to 3.
             pretrained_backbone [bool]: If True the backbone is loaded with pretrained weights on imagenet dataset. (Default: True)
+            iou_threshold [float]: Value in the range (0,1] which respensted the maximum detection overlap.
+            score_threshold [float]: Value in the range (0,1) which respensted the minimum detection score.
             progress [bool]: If True the backbone pretrained weights download progress bar is displayed. (Default: False) 
 			kwargs: Dictionary of the arguments to be passed to the detector API.
         """
@@ -89,9 +95,14 @@ class RegionProposalNetwork():
 
         self._model.float()
         self.to(torch.device('cpu')) # defaults to CPU.
+
+        self.iou_threshold = iou_threshold
+        self.score_threshold = score_threshold
         
         self._model_metadata = {"model": model_type, 
                                 "backbone": backbone_type,
+                                "iou_threshold": iou_threshold,
+                                "score_threshold": score_threshold,
                                 "parameters": kwargs} 
 
         if load_path:
@@ -119,7 +130,13 @@ class RegionProposalNetwork():
         )
 
         head.regression_head._loss_type = "giou"
-        return RetinaNet(backbone, num_classes=2, anchor_generator=anchor_generator, head=head, **kwargs)
+        return RetinaNet(backbone, 
+                        num_classes=2, 
+                        anchor_generator=anchor_generator, 
+                        head=head, 
+                        score_thresh=0.05,
+                        nms_thresh=1,
+                        **kwargs)
 
     def __fcos(self, backbone, **kwargs):
         """
@@ -133,7 +150,11 @@ class RegionProposalNetwork():
         Returns:
             [TBD]: FCOS model with one object detection.
         """
-        return FCOS(backbone, num_classes=2, **kwargs)
+        return FCOS(backbone, 
+                    num_classes=2, 
+                    score_thresh=0.05,
+                    nms_thresh=1,
+                    **kwargs)
 
     def __resnet_backbone(self, object_detector, resnet_type, trainable_backbone_layers=None, pretrained_backbone=True, progress=False):
         """
@@ -393,14 +414,15 @@ class RegionProposalNetwork():
         Returns:
             [list]: List of dictionaries with region proposals for each image in X.
         """
-        self._model.eval() # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
-        prior = self.device
+        self._model.eval()
+        # prior = self.device
         with torch.no_grad():
-            X = [x.to("cpu") for x in X] # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
-            self.to("cpu") # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
+            # X = [x.to("cpu") for x in X] # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
+            # self.to("cpu") # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
+            X = [x.to(self.device) for x in X]
             y_hats = self._model(X)
-            y_hats = self.__nms(y_hats)
-        self.to(prior)     # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED    
+            y_hats = self.__nms(y_hats, self.iou_threshold, self.score_threshold)
+        # self.to(prior)     # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED    
         return y_hats
 
 
