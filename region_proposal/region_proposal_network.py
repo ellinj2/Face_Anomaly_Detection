@@ -14,11 +14,22 @@ from functools import partial
 
 from torchvision.ops import misc, feature_pyramid_network
 from torchvision.models import resnet
-from torchvision.models.detection import RetinaNet, FCOS, backbone_utils
+from torchvision.models.detection import RetinaNet, FCOS, backbone_utils, fcos_resnet50_fpn
 from torchvision.models.detection.retinanet import RetinaNetHead, _default_anchorgen
 
 from torchmetrics.detection import MeanAveragePrecision
 
+def dataset_formatting(data):
+    """
+    Formats data from dataset object to model compatiable data structure.
+    """
+    images, targets = [], []
+    
+    for d in data:
+        images.append(d[0])
+        targets.append(d[1])
+        
+    return images, targets
 
 class RegionProposalNetwork():
     """    
@@ -75,6 +86,7 @@ class RegionProposalNetwork():
         else:
             raise ValueError(f"Model type '{model_type}' is not an available model type. Avaiable options are 'retinanet' and 'fcos'.")
 
+        self._model.float()
         self.to(torch.device('cpu')) # defaults to CPU.
         
         self._model_metadata = {"model": model_type, 
@@ -275,10 +287,10 @@ class RegionProposalNetwork():
         train_loader = DataLoader(train_dataset, 
                                     batch_size=batch_size, 
                                     shuffle=True, 
-                                    num_workers=0, ### try to change these settings if dataloading is slow.
-                                    collate_fn=self.__dataset_formatting,
-                                    pin_memory=False,
-                                    persistent_workers=False)
+                                    num_workers=3, ### try to change these settings if dataloading is slow.
+                                    collate_fn=dataset_formatting,
+                                    pin_memory=True,
+                                    persistent_workers=True)
 
         sched, optim = optimizer if isinstance(optimizer, tuple) else (None, optimizer)
 
@@ -311,7 +323,14 @@ class RegionProposalNetwork():
             for i, (X, y) in enumerate(train_e_loader):
                 X = [x.to(self.device) for x in X]
                 y = [{"boxes": t.to(self.device), "labels": torch.ones(len(t), dtype=torch.int64).to(self.device)} for t in y]
-                loss_dict = self._model(X, y)
+                try:
+                    loss_dict = self._model(X, y)
+                except Exception as e:
+                    ys = [_y['boxes'] for _y in y]
+                    for i in range(len(y)):
+                        print(X[i], ys[i])
+                    print(e)
+                    exit()
 
                 batch_loss = sum(b_loss for b_loss in loss_dict.values())
                 loss += batch_loss.item()
@@ -399,10 +418,10 @@ class RegionProposalNetwork():
         dataloader = DataLoader(dataset, 
                                     batch_size=batch_size, 
                                     shuffle=True, 
-                                    num_workers=0, ### try to change these settings if dataloading is slow.
-                                    collate_fn=self.__dataset_formatting,
-                                    pin_memory=False,
-                                    persistent_workers=False)
+                                    num_workers=3, ### try to change these settings if dataloading is slow.
+                                    collate_fn=dataset_formatting,
+                                    pin_memory=True,
+                                    persistent_workers=True)
         
         if progress:
             dataloader = tqdm(dataloader)
@@ -419,14 +438,3 @@ class RegionProposalNetwork():
         return metrics.compute()
                 
 
-    def __dataset_formatting(self, data):
-        """
-        Formats data from dataset object to model compatiable data structure.
-        """
-        images, targets = [], []
-        
-        for d in data:
-            images.append(d[0])
-            targets.append(d[1])
-            
-        return images, targets
