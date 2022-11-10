@@ -12,10 +12,11 @@ from torch.utils.data import DataLoader
 from torch import nn
 from functools import partial
 
-from torchvision.ops import misc, feature_pyramid_network
+from torchvision.ops import misc, feature_pyramid_network, box_iou
 from torchvision.models import resnet
-from torchvision.models.detection import RetinaNet, FCOS, backbone_utils, fcos_resnet50_fpn
+from torchvision.models.detection import RetinaNet, FCOS, backbone_utils
 from torchvision.models.detection.retinanet import RetinaNetHead, _default_anchorgen
+
 
 from torchmetrics.detection import MeanAveragePrecision
 
@@ -397,9 +398,10 @@ class RegionProposalNetwork():
         with torch.no_grad():
             X = [x.to("cpu") for x in X] # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
             self.to("cpu") # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
-            y_hat = self._model(X)
+            y_hats = self._model(X)
+            y_hats = self.__nms(y_hats)
         self.to(prior)     # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED    
-        return y_hat
+        return y_hats
 
 
     def evaluate(self, dataset, batch_size=1, progress=False):
@@ -433,9 +435,102 @@ class RegionProposalNetwork():
                 X = [x.to(self.device) for x in X]
                 y = [{"boxes": t.to(self.device), "labels": torch.ones(len(t), dtype=torch.int64).to(self.device)} for t in y]
                 
-                y_hat = [{k:v.to(self.device) for k,v in _y.items()} for _y in self.propose(X)] # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
-                metrics.update(y_hat, y)
+                # y_hats = [{k:v.to(self.device) for k,v in _y.items()} for _y in self.propose(X)] # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
+                y_hats = self.propose(X)
+                metrics.update(y_hats, y)
 
         return metrics.compute()
                 
+    def __nms(self, y_preds, iou_threshold, score_threshold):
+        """
+        Runs non-maximum suppression on region proposals.
 
+        Parameters:
+            y_preds [list]: List of dictionarys of the form:
+                            {
+                                "boxes": torch.Tensor([N,4])
+                                "labels": torch.Tensor([N])
+                                "scores": torch.Tensor([N])
+                            }
+                            Where N is the number of detections.
+            iou_threshold [float]: Value in the range (0,1] which respensted the maximum detection overlap.
+            score_threshold [float]: Value in the range (0,1) which respensted the minimum detection score.
+
+        Returns:
+            [dict]: Final region proposals with the same for as .
+        """
+        y_hats = []
+        for y_pred in y_preds:
+            # Keep regions with score at or above the score threshold.
+            keep_idxs = torch.where(y_pred["scores"] >= score_threshold)
+            y_pred = {k: v[keep_idxs] for k, v in y_pred.items()}
+
+            # Sort regions in descending order of scores.
+            sorted_idxs = torch.argsort(y_pred["scores"], descending=True)
+            y_pred = {k: v[sorted_idxs] for k, v in y_pred.items()}
+
+            y_hat = {"boxes": torch.zeros((0,4), dtype=torch.float32, device=self.device), 
+                     "labels": torch.zeros(0, dtype=torch.int64, device=self.device), 
+                     "scores": torch.zeros(0, dtype=torch.float32, device=self.device)}
+
+            # Suppress non-maximum boxes.
+            while len(y_pred["boxes"]) != 0: 
+                # Take bounding box with highest score.
+                m_bbox = y_pred["boxes"][0].reshape(1,4)
+                m_label = y_pred["labels"][0].reshape(1)
+                m_score = y_pred["scores"][0].reshape(1)
+
+                # Add highest scoring bounding box to final proposal dictionary.
+                y_hat["boxes"] = torch.concat((y_hat["boxes"], m_bbox))
+                y_hat["labels"] = torch.concat((y_hat["labels"], m_label))
+                y_hat["scores"] = torch.concat((y_hat["scores"], m_score))
+
+                # Remove highest scoring bounding box from prediction dictionary.
+                y_pred["boxes"] = y_pred["boxes"][1:,:]
+                y_pred["labels"] = y_pred["labels"][1:]
+                y_pred["scores"] = y_pred["scores"][1:]
+
+                # Compute iou score between all predictions and the highest scoring bounding box.
+                m_bboxs = torch.tile(m_bbox, dims=(len(y_pred["boxes"]),1)).to(self.device)
+                bboxs = y_pred["boxes"]
+                iou_scores = self.__iou(m_bboxs, bboxs)
+
+                # Keep the predictions that have a iou score below the iou threshold.
+                keep_idxs = torch.where(iou_scores < iou_threshold)
+                y_pred["boxes"] = y_pred["boxes"][keep_idxs]
+                y_pred["labels"] = y_pred["labels"][keep_idxs]
+                y_pred["scores"] = y_pred["scores"][keep_idxs]
+
+            y_hats.append(y_hat)
+
+        return y_hats
+
+    def __iou(self, boxes1, boxes2):
+            """
+            Computes the intersection over union score for two sets of boxes.
+
+            Parameters:
+                boxes1 [torch.Tensor]: A tensor of shape [N, 4] where the row format is [x1, y1, x2, y2] 
+                                        and the components have the condition that 0 <= x1 < x2 and 0 <= y1 < y2.
+                boxes1 [torch.Tensor]: A tensor of the same shape and components conditions as boxes1.
+            
+            Returns:
+                [torch.Tensor]: A tensor of size N with the IOU score for each pairwise boxes from set 1 and 2. 
+            """
+            # Get coordinates of the pairwise bounding box intersection.
+            x1_i = torch.max(boxes1[:,0], boxes2[:,0])
+            y1_i = torch.max(boxes1[:,1], boxes2[:,1])
+            x2_i = torch.min(boxes1[:,2], boxes2[:,2])
+            y2_i = torch.min(boxes1[:,3], boxes2[:,3])
+
+            # Compute the area of the intersection.
+            w_i = x2_i - x1_i
+            h_i = y2_i - y1_i
+            i_areas = torch.where(w_i >= 0, w_i, 0) * torch.where(h_i >= 0, h_i, 0)
+            
+            # Compute the area of the union.
+            b1_areas = (boxes1[:,3] - boxes1[:,1]) * (boxes1[:,2] - boxes1[:,0])
+            b2_areas = (boxes2[:,3] - boxes2[:,1]) * (boxes2[:,2] - boxes2[:,0])
+            u_areas = b1_areas + b2_areas - i_areas
+
+            return i_areas/u_areas
