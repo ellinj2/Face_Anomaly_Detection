@@ -305,7 +305,7 @@ class RegionProposalNetwork():
             "valid_map_75": []
         }
 
-        best_acc = 0
+        best_acc = -np.inf
         best_model_wts = None
 
         for e in range(epochs):
@@ -342,8 +342,8 @@ class RegionProposalNetwork():
                 if progress:
                     train_e_loader.set_description(desc=f"Training loss: {loss/(i+1):.4f}")
 
-            train_metrics = self.evaluate(train_dataset, batch_size)
-            valid_metrics = self.evaluate(valid_dataset, batch_size)
+            train_metrics = self.evaluate(train_dataset, batch_size, progress=progress)
+            valid_metrics = self.evaluate(valid_dataset, batch_size, progress=progress)
             
             if valid_metrics["map"] > best_acc:
                 best_acc = valid_metrics["map"]
@@ -392,12 +392,13 @@ class RegionProposalNetwork():
         Returns:
             [list]: List of dictionaries with region proposals for each image in X.
         """
-        self._model.eval()
+        self._model.eval() # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
+        prior = self.device
         with torch.no_grad():
-            X = [x.to(self.device) for x in X]
-            
+            X = [x.to("cpu") for x in X] # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
+            self.to("cpu") # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
             y_hat = self._model(X)
-        
+        self.to(prior)     # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED    
         return y_hat
 
 
@@ -428,11 +429,11 @@ class RegionProposalNetwork():
 
         metrics = MeanAveragePrecision()
         with torch.no_grad():
-            for X, y in dataloader:
+            for X, y in tqdm(dataloader):
                 X = [x.to(self.device) for x in X]
                 y = [{"boxes": t.to(self.device), "labels": torch.ones(len(t), dtype=torch.int64).to(self.device)} for t in y]
                 
-                y_hat = self.propose(X)
+                y_hat = [{k:v.to(self.device) for k,v in _y.items()} for _y in self.propose(X)] # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
                 metrics.update(y_hat, y)
 
         return metrics.compute()

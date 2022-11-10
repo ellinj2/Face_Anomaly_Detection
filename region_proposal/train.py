@@ -109,6 +109,7 @@ def main(args):
                 checkpoints=checkpoints, 
                 progress=True)
 
+    hist = {k : [item.item() for item in v] for k,v in hist.items()}
     # save training results.
     with open(os.path.join(save_path, "training_history.json"), "w") as f:
         json.dump(hist, f, indent=1)
