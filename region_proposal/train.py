@@ -14,16 +14,16 @@ def get_arg_parser():
     import argparse
 
     parser = argparse.ArgumentParser(description="Train the region proposal network.")
-    parser.add_argument("--data_path", type=str, help="Path to folder with a train and validation subfolders.")
-    parser.add_argument("--model_type", type=str, help="String representing the desired object detection model. Avaiable options are 'retinanet' and 'fcos'.")
-    parser.add_argument("--backbone_type", type=str, help="String representing the desired resnet backbone for detector. Avaiable options are 'resnet18', 'resnet34', 'resnet50', 'resnet101', and 'resnet152'.")
-    parser.add_argument("--epochs", type=int, help="Number of training iterations over the data.")
-    parser.add_argument("--batch_size", type=int, help="Number of images to batch for training and evaluaton.")
-    parser.add_argument("--learning_rate", type=float, help="Float reprisenting the learning rate.")
-    parser.add_argument("--save_path", type=str, help="Path to save model checkpoints and training history.")
+    parser.add_argument("--data_path", type=str, required=True, help="Path to folder with a train and validation subfolders.")
+    parser.add_argument("--model_type", type=str, required=True, help="String representing the desired object detection model. Avaiable options are 'retinanet' and 'fcos'.")
+    parser.add_argument("--backbone_type", type=str, required=True, help="String representing the desired resnet backbone for detector. Avaiable options are 'resnet18', 'resnet34', 'resnet50', 'resnet101', and 'resnet152'.")
+    parser.add_argument("--epochs", type=int, required=True, help="Number of training iterations over the data.")
+    parser.add_argument("--batch_size", type=int, required=True, help="Number of images to batch for training and evaluaton.")
+    parser.add_argument("--learning_rate", type=float, required=True, help="Float reprisenting the learning rate.")
+    parser.add_argument("--save_path", type=str, required=True, help="Path to save model checkpoints and training history.")
     parser.add_argument("--checkpoints", type=int, default=0, help="Integer N reprisenting after every N epochs to create a model checkpoint. If 0, only save the best model. (Default: 0)")
+    parser.add_argument("--num_workers", type=int, default=0, help="Number of workers to load data. Set to -1 to use all cpu cores. (Default: 0)")
     parser.add_argument("-c", "--cuda", action="store_true", help="Set flag if model should be loaded and trained on a GPU. By default the model will run on cpu.")
-    parser.add_argument("--num_workers", type=int, default=mp.cpu_count(), help="Number of workers to load data")
 
     return parser
 
@@ -36,6 +36,7 @@ def main(args):
     lr = args.learning_rate
     save_path = args.save_path
     checkpoints = args.checkpoints
+    num_workers = args.num_workers
     cuda = args.cuda
 
     # check command line args...
@@ -50,6 +51,12 @@ def main(args):
     if checkpoints < 0:
         print(f"Checkpoints must be a non-negative integer but was {checkpoints}.")
         sys.exit()
+
+    if num_workers < -1:
+        print(f"Number of workers must be postive integer or -1 but was {batch_size}.")
+
+    if num_workers == -1:
+        num_workers= mp.cpu_count()
 
     if not os.path.isdir(data_folder):
         print(f"{data_folder} is not a valid directory.")
@@ -108,9 +115,9 @@ def main(args):
                 batch_size=batch_size, 
                 optimizer=optim, 
                 save_path=save_path, 
-                checkpoints=checkpoints, 
-                progress=True,
-                num_workers=args.num_workers)
+                checkpoints=checkpoints,
+                num_workers=num_workers,
+                progress=True)
 
     # save training results.
     with open(os.path.join(save_path, "training_history.json"), "w") as f:

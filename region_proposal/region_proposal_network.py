@@ -17,8 +17,8 @@ from torchvision.models import resnet
 from torchvision.models.detection import RetinaNet, FCOS, backbone_utils
 from torchvision.models.detection.retinanet import RetinaNetHead, _default_anchorgen
 
-
 from torchmetrics.detection import MeanAveragePrecision
+
 
 def dataset_formatting(data):
     """
@@ -436,7 +436,7 @@ class RegionProposalNetwork():
         Evaluates the model on a dataset.
 
         Parameters:
-            dataset [TBD]: Dataset or dataloader to use for model evaluation.
+            dataset [torch.utils.data.Dataset|torch.utils.data.DataLoader]: Dataset or dataloader to use for model evaluation.
             batch_size [int]: Number of images to batch for each evaluaton. (Default: 1)
             progress [bool]: Report evaluation progress. (Default: True)
             num_workers [int]: Number of workers to use for DataLoaders. (Default: 0)
@@ -454,7 +454,6 @@ class RegionProposalNetwork():
                                         collate_fn=dataset_formatting,
                                         pin_memory=True,
                                         persistent_workers=num_workers>0)
-
         else:
             dataloader = dataset
 
