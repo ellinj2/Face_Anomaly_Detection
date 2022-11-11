@@ -23,7 +23,7 @@ def get_arg_parser():
     parser.add_argument("--save_path", type=str, help="Path to save model checkpoints and training history.")
     parser.add_argument("--checkpoints", type=int, default=0, help="Integer N reprisenting after every N epochs to create a model checkpoint. If 0, only save the best model. (Default: 0)")
     parser.add_argument("-c", "--cuda", action="store_true", help="Set flag if model should be loaded and trained on a GPU. By default the model will run on cpu.")
-    parser.add_argument("--num_workers", type=int, default=mp.cpu_count(), help="Number of workers to load data")
+    parser.add_argument("--num_workers", type=int, default=mp.cpu_count(), help="Number of workers to load data. (Defualt multiprocessing.cpu_count())")
 
     return parser
 
@@ -37,6 +37,8 @@ def main(args):
     save_path = args.save_path
     checkpoints = args.checkpoints
     cuda = args.cuda
+
+    save_path = f"{save_path}/{model_type}/{backbone_type}"
 
     # check command line args...
     if epochs <= 0:
