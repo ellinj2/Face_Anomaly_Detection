@@ -6,6 +6,7 @@ from hashlib import sha256
 import torch
 import numpy as np
 from tqdm import tqdm
+import time
 
 from torch.utils.data import DataLoader
 
@@ -371,7 +372,7 @@ class RegionProposalNetwork():
                 if progress:
                     train_e_loader.set_description(desc=f"Training loss: {loss/(i+1):.4f}")
 
-            train_metrics = self.evaluate(train_loader, batch_size, progress=progress, num_workers=num_workers)
+            train_metrics = self.evaluate(train_loader, batch_size, progress=progress, num_workers=num_workers, train=True)
             valid_metrics = self.evaluate(valid_loader, batch_size, progress=progress, num_workers=num_workers)
             
             if valid_metrics["map"] > best_acc:
@@ -391,10 +392,10 @@ class RegionProposalNetwork():
                 print("Training Results:")
                 print(f"\tmAP@.50::.05::.95 - {train_hist['train_map'][-1]}")
                 print(f"\tmAP@.50 - {train_hist['train_map_50'][-1]}")
-                print(f"\tmAP@.75 - {train_hist['valid_map_75'][-1]}")
+                print(f"\tmAP@.75 - {train_hist['train_map_75'][-1]}")
                 print("Validation Results:")
                 print(f"\tmAP@.50::.05::.95 - {train_hist['valid_map'][-1]}")
-                print(f"\tmAP@.50 - {train_hist['train_map_50'][-1]}")
+                print(f"\tmAP@.50 - {train_hist['valid_map_50'][-1]}")
                 print(f"\tmAP@.75 - {train_hist['valid_map_75'][-1]}")
 
             if checkpoints > 0:
@@ -431,7 +432,7 @@ class RegionProposalNetwork():
         return y_hats
 
 
-    def evaluate(self, dataset, batch_size=1, progress=False, num_workers=0):
+    def evaluate(self, dataset, batch_size=1, progress=False, num_workers=0, train=False):
         """
         Evaluates the model on a dataset.
 
@@ -463,14 +464,19 @@ class RegionProposalNetwork():
 
         metrics = MeanAveragePrecision()
         with torch.no_grad():
-            for X, y in dataloader:
+            for i, (X, y) in enumerate(dataloader):
+                if i == 10 and train: # For speed of computation. DO NOT PUSH
+                    break
                 X = [x.to(self.device) for x in X]
                 y = [{"boxes": t.to(self.device), "labels": torch.ones(len(t), dtype=torch.int64).to(self.device)} for t in y]
                 
                 y_hats = self.propose(X)
                 metrics.update(y_hats, y)
 
-        return {k: v.item() for k, v in metrics.compute().items()}
+        t = time.time()
+        d = {k: v.item() for k, v in metrics.compute().items()}
+        print(f"It took {time.time()-t:.2f} seconds to run")
+        return d
                 
     def __nms(self, y_preds, iou_threshold, score_threshold):
         """
