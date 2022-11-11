@@ -1,7 +1,8 @@
-import json
 import os
 import copy
+import json
 from hashlib import sha256
+from glob import glob
 
 import torch
 import numpy as np
@@ -11,6 +12,9 @@ from torch.utils.data import DataLoader
 
 from torch import nn
 from functools import partial
+
+import cv2
+import torchvision.transforms as transforms
 
 from torchvision.ops import misc, feature_pyramid_network, box_iou
 from torchvision.models import resnet
@@ -46,36 +50,58 @@ class RegionProposalNetwork():
         load: Loads model weights from spesified file. 
         fit: Trains the model on a given input, evaluating after every epoch.
         propose: Runs inference on the model given an input.
+        preprocess: Tranforms images to model compatable format.
         evaluate: Evaluates the model on a given input and returns metrics.
 	"""
     def __init__(self, 
-                model_type, 
-                backbone_type,
+                model_type=None, 
+                backbone_type=None,
                 load_path=None,
                 trainable_backbone_layers=None, 
                 pretrained_backbone=True, 
                 iou_threshold=0.5,
-                score_threshold=0.5,
+                score_threshold=0.05,
                 progress=False, 
                 **kwargs):
         """
         Initializes an instance of RegionProposalNetwork.
 
         Parameters:
-			model_type [str]: String representing the desired object detection model.
-                                Avaiable options are 'retinanet' and 'fcos'.
-            backbone_type [str]: String representing the desired resnet backbone for detector.
-                                    Avaiable options are 'resnet18', 'resnet34', 'resnet50', 'resnet101', and 'resnet152'.
+			model_type [str]: String representing the desired object detection model. Not used if load_path is spesified.
+                                Avaiable options are 'retinanet' and 'fcos'. (Default: None)
+            backbone_type [str]: String representing the desired resnet backbone for detector. Not used if load_path is spesified.
+                                    Avaiable options are 'resnet18', 'resnet34', 'resnet50', 'resnet101', and 'resnet152'. (Default: None)
             load_path [str]: Optional path to file containing model weights to load into model. (Default: None)
             trainable_backbone_layers [int]: Intiger between 0 and 5 indicating the number of trainable layers in 
                                                 backbone. 5 means all layers are trainable. If backbone is not 
                                                 pretrained do not use this argument. If backbone is pretrained 
                                                 and argument is not spesified it defaults to 3.
             pretrained_backbone [bool]: If True the backbone is loaded with pretrained weights on imagenet dataset. (Default: True)
-            iou_threshold [float]: Value in the range (0,1] which respensted the maximum detection overlap.
-            score_threshold [float]: Value in the range (0,1) which respensted the minimum detection score.
+            iou_threshold [float]: Value in the range (0,1] which respensted the maximum detection overlap. (Default: 0.5)
+            score_threshold [float]: Value in the range (0,1) which respensted the minimum detection score. (Default: 0.05)
             progress [bool]: If True the backbone pretrained weights download progress bar is displayed. (Default: False) 
 			kwargs: Dictionary of the arguments to be passed to the detector API.
+        """
+        self.iou_threshold = iou_threshold
+        self.score_threshold = score_threshold
+
+        if load_path:
+            self.load(load_path)
+        else:
+            self._model = self.__build_model(model_type, backbone_type, trainable_backbone_layers, pretrained_backbone, progress, **kwargs)
+            self._model_metadata = {"model": model_type, 
+                                    "backbone": backbone_type,
+                                    "iou_threshold": iou_threshold,
+                                    "score_threshold": score_threshold,
+                                    "parameters": kwargs}  
+
+        self.to(torch.device('cpu')) # defaults to CPU.
+               
+    def __build_model(self, model_type, backbone_type, trainable_backbone_layers=None, pretrained_backbone=True, progress=False, **kwargs):
+        """
+        Builds spesified model.
+
+        Reference contructor for paramemter spesifications.
         """
         if pretrained_backbone and trainable_backbone_layers is None:
             trainable_backbone_layers = 3
@@ -87,26 +113,15 @@ class RegionProposalNetwork():
                                             progress)
 
         if model_type == "retinanet":
-            self._model = self.__retinanet(backbone, **kwargs)
+            model = self.__retinanet(backbone, **kwargs)
         elif model_type == "fcos":
-            self._model = self.__fcos(backbone, **kwargs)
+            model = self.__fcos(backbone, **kwargs)
         else:
             raise ValueError(f"Model type '{model_type}' is not an available model type. Avaiable options are 'retinanet' and 'fcos'.")
 
-        self._model.float()
-        self.to(torch.device('cpu')) # defaults to CPU.
+        model.float()
 
-        self.iou_threshold = iou_threshold
-        self.score_threshold = score_threshold
-        
-        self._model_metadata = {"model": model_type, 
-                                "backbone": backbone_type,
-                                "iou_threshold": iou_threshold,
-                                "score_threshold": score_threshold,
-                                "parameters": kwargs} 
-
-        if load_path:
-            self.load(load_path)
+        return model
 
     def __retinanet(self, backbone, **kwargs):
         """
@@ -277,10 +292,25 @@ class RegionProposalNetwork():
         Load the model from spesified path.
 
         Parameters:
-            load_path [str]: Path to file to load model weights from. Note that this instance of RegionProposalNetwork have been 
-                                initialized with the same model configuration as the weight file.
+            load_path [str]: Path to folder to load model from. Folder must contain both the .json metadata and .pth weight file.
         """
-        self._model.load_state_dict(torch.load(load_path, map_location=self.device))
+        try:
+            metadata_path = glob(os.path.join(load_path, "*.json"))[0]
+            with open(metadata_path, "r") as f:
+                self._model_metadata = json.load(f)
+        except:
+            raise Exception(f"Encountered error while extracting model metadata from {load_path}.")
+
+        self._model = self.__build_model(self._model_metadata["model"],
+                                         self._model_metadata["model"], 
+                                         self._model_metadata["parameters"],
+                                         pretrained_backbone=False)
+
+        try:
+            weight_path = glob(os.path.join(load_path, "*.pth"))[0]
+            self._model.load_state_dict(torch.load(weight_path))
+        except:
+            raise Exception(f"Encountered error while loading model weights from {load_path}.")
 
     def fit(self, epochs, datasets, batch_size, optimizer, save_path, checkpoints=0, progress=True, num_workers=0):
         """
@@ -430,6 +460,27 @@ class RegionProposalNetwork():
             # y_hats = self.__nms(y_hats, self.iou_threshold, self.score_threshold)
         return y_hats
 
+    def preprocess(self, image_paths):
+        """
+        Preprocesses a list of images paths to a list of tensors that are compatable with the model.
+
+        Paramemeters:
+            image_paths [list]: List of image paths.
+
+        Return:
+            [list]: A list of image tensors loaded to the same device as the model.
+        """
+        images = []
+
+        transform = transforms.ToTensor()
+        for image_path in image_paths:
+            image = cv2.imread(image_path)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = transform(image)
+            image.to(self.device)
+            images.appeend(image)
+        
+        return images
 
     def evaluate(self, dataset, batch_size=1, progress=False, num_workers=0):
         """
