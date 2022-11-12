@@ -303,9 +303,8 @@ class RegionProposalNetwork():
             raise Exception(f"Encountered error while extracting model metadata from {load_path}.")
 
         self._model = self.__build_model(self._model_metadata["model"],
-                                         self._model_metadata["model"], 
-                                         self._model_metadata["parameters"],
-                                         pretrained_backbone=False)
+                                         self._model_metadata["backbone"], 
+                                         **self._model_metadata["parameters"])
 
         try:
             weight_path = glob(os.path.join(load_path, "*.pth"))[0]
@@ -479,7 +478,7 @@ class RegionProposalNetwork():
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             image = transform(image)
             image.to(self.device)
-            images.appeend(image)
+            images.append(image)
         
         return images
 
