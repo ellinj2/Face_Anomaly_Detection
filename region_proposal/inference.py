@@ -54,8 +54,7 @@ def main(args):
             image_paths = image_paths + glob(os.path.join(data_path, ie), recursive=True)
 
 
-    N_batchs = 5
-    # N_batchs = int((len(image_paths)/25) // batch_size)
+    N_batchs = int(len(image_paths) // batch_size)
     rem = len(image_paths) % batch_size
 
     results_df = pd.DataFrame(columns=["Image Path", "x1", "y2", "x2", "y2"])
@@ -74,7 +73,6 @@ def main(args):
                 y["boxes"] = y["boxes"].type(torch.int16)
                 X_boxed = draw_bounding_boxes(X, y["boxes"], colors="green", width=2)
                 X_boxed = torch.moveaxis(X_boxed, 0, -1).numpy()
-                print(X_boxed.shape)
                 X_boxed = cv2.cvtColor(X_boxed, cv2.COLOR_RGB2BGR) # RGB to BGR
                 cv2.imwrite(os.path.join(out_path, os.path.basename(image_path)), X_boxed)
 
