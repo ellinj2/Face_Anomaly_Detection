@@ -13,12 +13,27 @@ from face_dataset import WFFaceDataset
 from utils import get_image_paths
 
 def correct_incorrect_missing(y_trues, y_preds):
-    iou_scores = box_iou(y_trues["boxes"], y_preds["boxes"])
-    sum_value = torch.sum(iou_scores >= 0.5, dim=1)
+    order_idxs = torch.argsort(y_preds["scores"])
+    y_pred = {k: v[order_idxs] for k, v in y_preds.items()}
 
-    tp = int(torch.sum(sum_value > 0))
-    fp = int(torch.sum(torch.where(sum_value > 1, sum_value-1, 0)))
-    fn = int(torch.sum(sum_value == 0))
+    iou_scores = box_iou(y_trues["boxes"], y_preds["boxes"])
+
+    tp, fp = (0,0)
+    for d in range(len(y_preds["boxes"])):
+        max_iou, gt_idx = 0, None
+
+        for g in range(len(y_trues["boxes"])):
+            if y_trues["labels"][g] == y_preds["labels"][d] and iou_scores[g][d] > max_iou:
+                max_iou, gt_idx = iou_scores[g][d], g
+
+        if max_iou >= 0.5:
+            tp += 1
+            keep_idxs = torch.where(torch.arange(len(y_trues["boxes"])) != gt_idx)
+            y_trues = {k: v[keep_idxs] for k, v in y_trues.items()}
+        else:
+            fp += 1
+
+    fn = len(y_trues["boxes"])
 
     return (tp, fp, fn)
 
@@ -93,7 +108,7 @@ def main(args):
     y_batchs_trues, y_batchs_preds = ([], [])
     for X, y in tqdm(dataloader):
         if cuda:
-            y = y = [{"boxes": t.to("cuda:0"), "labels": torch.ones(len(t), dtype=torch.int64).to("cuda:0")} for t in y]
+            y = [{"boxes": t.to("cuda:0"), "labels": torch.ones(len(t), dtype=torch.int64).to("cuda:0")} for t in y]
         y_batchs_trues.append(y)
         y_batchs_preds.append(model.propose(X))
 
@@ -125,7 +140,6 @@ def main(args):
     best_iou_threshold = result_df["iou_threshold"][idx_max]
     best_score_threshold = result_df["score_threshold"][idx_max]
     model.update_nms_thresholds(best_iou_threshold, best_score_threshold)
-
     model.save(os.path.join(model_path))
     result_df.to_csv(os.path.join(model_path, "threshold_optimization.csv"), index=False)
     print("Done")

@@ -91,7 +91,8 @@ class WFFaceDataset(Dataset):
 		self.image_ids = []
 		self.image_to_bbox_dict = {}
 		self.read_data()
-		self.image_ids = self.image_ids[:] # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
+		import numpy as np
+		self.image_ids = np.array(self.image_ids)[np.random.choice(np.arange(0, len(self.image_ids)), size=200, replace=False)] # TEMPORARY, DELETE ONCE NMS ERROR IS RESOLVED
 		self.transform = transforms.ToTensor()
 
 	def __getitem__(self, index: int):
