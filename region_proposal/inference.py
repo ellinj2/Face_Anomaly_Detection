@@ -1,18 +1,48 @@
 import os
-import cv2
-from glob import glob
-import pandas as pd
+import sys
 from tqdm import tqdm
+
+import cv2
 
 import torch
 from torchvision.utils import draw_bounding_boxes
+
+from utils import get_image_paths
 from region_proposal_network import RegionProposalNetwork
 
+import pandas as pd
+
+
+def inference(model, image_p_batch):
+    N_batchs = int(len(image_paths) // batch_size)
+    rem = len(image_paths) % batch_size
+
+    results_df = pd.DataFrame(columns=["Image Path", "x1", "y2", "x2", "y2"])
+
+    for i in tqdm(range(N_batchs+1)):
+        if i != N_batchs or rem == 0:
+            image_p_batch = image_paths[i*batch_size:(i+1)*batch_size]
+        else:
+            image_p_batch = image_paths[i*batch_size:]
+
+        X_batch = model.preprocess(image_p_batch)
+        y_batch = model.propose(X_batch)
+        for image_path, X, y in zip(image_p_batch, X_batch, y_batch):
+            if save_images:
+                X_boxed = draw_bounding_boxes((X * 255).type(torch.uint8), y["boxes"].type(torch.int16), colors="green", width=2)
+                X_boxed = torch.moveaxis(X_boxed, 0, -1).numpy()
+                X_boxed = cv2.cvtColor(X_boxed, cv2.COLOR_RGB2BGR) # RGB to BGR
+                cv2.imwrite(os.path.join(out_path, os.path.basename(image_path)), X_boxed)
+            
+            for bbox in y["boxes"]:
+                results_df.loc[len(results_df.index)] = [image_path, int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])]
+    
+    return results_df
 
 def get_arg_parser():
     import argparse
-
     parser = argparse.ArgumentParser(description="Run inference on a region proposal network.")
+
     parser.add_argument("--model_path", type=str, required=True, help="") 
     parser.add_argument("--data_path", type=str, required=True, help="")
     parser.add_argument("--out_path", type=str, required=True, help="Path to output results too.")
@@ -34,6 +64,18 @@ def main(args):
     save_images = args.images
     cuda = args.cuda
 
+    if not os.path.isdir(data_path):
+        print(f"{data_path} is not a valid directory.")
+        sys.exit()
+
+    if not os.path.isdir(model_path):
+        print(f"{model_path} is not a valid directory.")
+        sys.exit()
+    
+    if batch_size <= 0:
+        print(f"Batch size must be a postive integer but was {batch_size}.")
+        sys.exit()
+
     if not os.path.isdir(out_path):
         os.makedirs(out_path)
 
@@ -41,18 +83,8 @@ def main(args):
     model = RegionProposalNetwork(load_path=model_path)
     if cuda:
         model.to("cuda:0") 
-    
 
-    # get image paths.
-    image_extensions = ["*.[jJ][pP][gG]", "*.[jJ][pP][eE][gG]", "*.[pP][nN][gG]"]
-    image_paths = []
-    if recursive:
-        for ie in image_extensions:
-            image_paths = image_paths + glob(os.path.join(data_path, "**", ie), recursive=True)
-    else:
-        for ie in image_extensions:
-            image_paths = image_paths + glob(os.path.join(data_path, ie), recursive=True)
-
+    image_paths = get_image_paths(data_path, recursive)
 
     N_batchs = int(len(image_paths) // batch_size)
     rem = len(image_paths) % batch_size
@@ -67,21 +99,15 @@ def main(args):
 
         X_batch = model.preprocess(image_p_batch)
         y_batch = model.propose(X_batch)
-        if save_images:
-            for image_path, X, y in zip(image_p_batch, X_batch, y_batch):
-                X = (X * 255).type(torch.uint8)
-                y["boxes"] = y["boxes"].type(torch.int16)
-                X_boxed = draw_bounding_boxes(X, y["boxes"], colors="green", width=2)
+        for image_path, X, y in zip(image_p_batch, X_batch, y_batch):
+            if save_images:
+                X_boxed = draw_bounding_boxes((X * 255).type(torch.uint8), y["boxes"].type(torch.int16), colors="green", width=2)
                 X_boxed = torch.moveaxis(X_boxed, 0, -1).numpy()
                 X_boxed = cv2.cvtColor(X_boxed, cv2.COLOR_RGB2BGR) # RGB to BGR
                 cv2.imwrite(os.path.join(out_path, os.path.basename(image_path)), X_boxed)
-
-                for bbox in y["boxes"]:
-                    results_df.loc[len(results_df.index)] = [image_path, int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])] 
-        else:
-            for image_path, y in zip(image_p_batch, y_batch):
-                for bbox in y["boxes"]:
-                    results_df.loc[len(results_df.index)] = [image_path, int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])]
+            
+            for bbox in y["boxes"]:
+                results_df.loc[len(results_df.index)] = [image_path, int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])]
 
     results_df.to_csv(os.path.join(out_path, "results.csv"), index=False)
 

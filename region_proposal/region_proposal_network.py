@@ -53,15 +53,14 @@ class RegionProposalNetwork():
         propose: Runs inference on the model given an input.
         preprocess: Tranforms images to model compatable format.
         evaluate: Evaluates the model on a given input and returns metrics.
+        update_nms_thresholds: Update the non-maximum suppression thresholds.
 	"""
     def __init__(self, 
                 model_type=None, 
                 backbone_type=None,
                 load_path=None,
                 trainable_backbone_layers=None, 
-                pretrained_backbone=True, 
-                iou_threshold=0.5,
-                score_threshold=0.05,
+                pretrained_backbone=True,
                 progress=False, 
                 **kwargs):
         """
@@ -83,17 +82,12 @@ class RegionProposalNetwork():
             progress [bool]: If True the backbone pretrained weights download progress bar is displayed. (Default: False) 
 			kwargs: Dictionary of the arguments to be passed to the detector API.
         """
-        self.iou_threshold = iou_threshold
-        self.score_threshold = score_threshold
-
         if load_path:
             self.load(load_path)
         else:
             self._model = self.__build_model(model_type, backbone_type, trainable_backbone_layers, pretrained_backbone, progress, **kwargs)
             self._model_metadata = {"model": model_type, 
                                     "backbone": backbone_type,
-                                    "iou_threshold": iou_threshold,
-                                    "score_threshold": score_threshold,
                                     "parameters": kwargs}  
 
         self.to(torch.device('cpu')) # defaults to CPU.
@@ -305,10 +299,14 @@ class RegionProposalNetwork():
         self._model = self.__build_model(self._model_metadata["model"],
                                          self._model_metadata["backbone"], 
                                          **self._model_metadata["parameters"])
-
         try:
             weight_path = glob(os.path.join(load_path, "*.pth"))[0]
-            self._model.load_state_dict(torch.load(weight_path))
+            model_weights = torch.load(weight_path)
+            
+            if sha256(str(model_weights).encode()).hexdigest() != self._model_metadata["weight_hash"]:
+                raise Exception("Model weights and metadata is not for the same model.")
+
+            self._model.load_state_dict(model_weights)
         except:
             raise Exception(f"Encountered error while loading model weights from {load_path}.")
 
@@ -321,7 +319,7 @@ class RegionProposalNetwork():
             datasets [tuple]: A tuple containing the training dataset as the first element and the validation dataset 
                                 as the second element.
             batch_size [int]: Number of images to batch for training and evaluaton.
-            optimizer [TBD|tuple]: Either an optimizer or a tuple contain a learning rate scheduler as the first element 
+            optimizer [torch.optim|tuple]: Either an optimizer or a tuple contain a learning rate scheduler as the first element 
                                     and an optimizer as the second element.
             save_path [str]: Path to save model checkpoints.
             checkpoints [int]: Integer N reprisenting after every N epochs to create a model checkpoint. If 0, only save the best model. (Default: 0)
@@ -336,21 +334,8 @@ class RegionProposalNetwork():
 
         train_dataset, valid_dataset = datasets
         
-
-        train_loader = DataLoader(train_dataset, 
-                                    batch_size=batch_size, 
-                                    shuffle=True, 
-                                    num_workers=num_workers, ### try to change these settings if dataloading is slow.
-                                    collate_fn=dataset_formatting,
-                                    pin_memory=True,
-                                    persistent_workers=num_workers>0)
-        valid_loader = DataLoader(valid_dataset,
-                                    batch_size=batch_size,
-                                    shuffle=False,
-                                    num_workers=num_workers,
-                                    collate_fn=dataset_formatting,
-                                    pin_memory=True,
-                                    persistent_workers=num_workers>0)
+        train_loader = self.build_dataloader(train_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+        valid_loader = self.build_dataloader(valid_dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
 
         sched, optim = optimizer if isinstance(optimizer, tuple) else (None, optimizer)
 
@@ -401,7 +386,7 @@ class RegionProposalNetwork():
                 if progress:
                     train_e_loader.set_description(desc=f"Training loss: {loss/(i+1):.4f}")
 
-            train_metrics = self.evaluate(train_loader, batch_size, progress=progress, num_workers=num_workers, train=True)
+            train_metrics = self.evaluate(train_loader, batch_size, progress=progress, num_workers=num_workers)
             valid_metrics = self.evaluate(valid_loader, batch_size, progress=progress, num_workers=num_workers)
             
             if valid_metrics["map"] > best_acc:
@@ -456,8 +441,6 @@ class RegionProposalNetwork():
         with torch.no_grad():
             X = [x.to(self.device) for x in X]
             y_hats = self._model(X)
-            # print(y_hats)
-            # y_hats = self.__nms(y_hats, self.iou_threshold, self.score_threshold)
         return y_hats
 
     def preprocess(self, image_paths):
@@ -482,7 +465,7 @@ class RegionProposalNetwork():
         
         return images
 
-    def evaluate(self, dataset, batch_size=1, progress=False, num_workers=0, train=False):
+    def evaluate(self, dataset, batch_size=1, num_workers=0, progress=False):
         """
         Evaluates the model on a dataset.
 
@@ -498,13 +481,7 @@ class RegionProposalNetwork():
         self._model.eval()
 
         if isinstance(dataset, torch.utils.data.Dataset):
-            dataloader = DataLoader(dataset, 
-                                        batch_size=batch_size, 
-                                        shuffle=True, 
-                                        num_workers=num_workers, ### try to change these settings if dataloading is slow.
-                                        collate_fn=dataset_formatting,
-                                        pin_memory=True,
-                                        persistent_workers=num_workers>0)
+            dataloader = self.build_dataloader(dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
         else:
             dataloader = dataset
 
@@ -513,110 +490,30 @@ class RegionProposalNetwork():
 
         metrics = MeanAveragePrecision()
         with torch.no_grad():
-            for i, (X, y) in enumerate(dataloader):
-                if i == 10 and train: # For speed of computation. DO NOT PUSH
-                    break
+            for X, y in dataloader:
                 X = [x.to(self.device) for x in X]
                 y = [{"boxes": t.to(self.device), "labels": torch.ones(len(t), dtype=torch.int64).to(self.device)} for t in y]
                 
                 y_hats = self.propose(X)
                 metrics.update(y_hats, y)
 
-        t = time.time()
-        d = {k: v.item() for k, v in metrics.compute().items()}
-        print(f"It took {time.time()-t:.2f} seconds to run")
-        return d
-                
-    def __nms(self, y_preds, iou_threshold, score_threshold):
+        return {k: v.item() for k, v in metrics.compute().items()}
+
+    def update_nms_thresholds(self, iou_threshold, score_threshold):
         """
-        Runs non-maximum suppression on region proposals.
-
-        Parameters:
-            y_preds [list]: List of dictionarys of the form:
-                            {
-                                "boxes": torch.Tensor([N,4])
-                                "labels": torch.Tensor([N])
-                                "scores": torch.Tensor([N])
-                            }
-                            Where N is the number of detections.
-            iou_threshold [float]: Value in the range (0,1] which respensted the maximum detection overlap.
-            score_threshold [float]: Value in the range (0,1) which respensted the minimum detection score.
-
-        Returns:
-            [dict]: Final region proposals with the same for as .
+        ### Add Doc
         """
-        y_hats = []
-        for y_pred in y_preds:
-            # Keep regions with score at or above the score threshold.
-            keep_idxs = torch.where(y_pred["scores"] >= score_threshold)
-            y_pred = {k: v[keep_idxs] for k, v in y_pred.items()}
+        self._model.nms_thresh = iou_threshold
+        self._model.score_thresh = score_threshold
 
-            # Sort regions in descending order of scores.
-            sorted_idxs = torch.argsort(y_pred["scores"], descending=True)
-            y_pred = {k: v[sorted_idxs] for k, v in y_pred.items()}
-
-            y_hat = {"boxes": torch.zeros((0,4), dtype=torch.float32, device=self.device), 
-                     "labels": torch.zeros(0, dtype=torch.int64, device=self.device), 
-                     "scores": torch.zeros(0, dtype=torch.float32, device=self.device)}
-
-            # Suppress non-maximum boxes.
-            while len(y_pred["boxes"]) != 0: 
-                # Take bounding box with highest score.
-                m_bbox = y_pred["boxes"][0].reshape(1,4)
-                m_label = y_pred["labels"][0].reshape(1)
-                m_score = y_pred["scores"][0].reshape(1)
-
-                # Add highest scoring bounding box to final proposal dictionary.
-                y_hat["boxes"] = torch.concat((y_hat["boxes"], m_bbox))
-                y_hat["labels"] = torch.concat((y_hat["labels"], m_label))
-                y_hat["scores"] = torch.concat((y_hat["scores"], m_score))
-
-                # Remove highest scoring bounding box from prediction dictionary.
-                y_pred["boxes"] = y_pred["boxes"][1:,:]
-                y_pred["labels"] = y_pred["labels"][1:]
-                y_pred["scores"] = y_pred["scores"][1:]
-
-                # Compute iou score between all predictions and the highest scoring bounding box.
-                m_bboxs = torch.tile(m_bbox, dims=(len(y_pred["boxes"]),1)).to(self.device)
-                bboxs = y_pred["boxes"]
-                iou_scores = self.__iou(m_bboxs, bboxs)
-
-                # Keep the predictions that have a iou score below the iou threshold.
-                keep_idxs = torch.where(iou_scores < iou_threshold)
-                y_pred["boxes"] = y_pred["boxes"][keep_idxs]
-                y_pred["labels"] = y_pred["labels"][keep_idxs]
-                y_pred["scores"] = y_pred["scores"][keep_idxs]
-
-            y_hats.append(y_hat)
-
-        return y_hats
-
-    def __iou(self, boxes1, boxes2):
-            """
-            Computes the intersection over union score for two sets of boxes.
-
-            Parameters:
-                boxes1 [torch.Tensor]: A tensor of shape [N, 4] where the row format is [x1, y1, x2, y2] 
-                                        and the components have the condition that 0 <= x1 < x2 and 0 <= y1 < y2.
-                boxes1 [torch.Tensor]: A tensor of the same shape and components conditions as boxes1.
-            
-            Returns:
-                [torch.Tensor]: A tensor of size N with the IOU score for each pairwise boxes from set 1 and 2. 
-            """
-            # Get coordinates of the pairwise bounding box intersection.
-            x1_i = torch.max(boxes1[:,0], boxes2[:,0])
-            y1_i = torch.max(boxes1[:,1], boxes2[:,1])
-            x2_i = torch.min(boxes1[:,2], boxes2[:,2])
-            y2_i = torch.min(boxes1[:,3], boxes2[:,3])
-
-            # Compute the area of the intersection.
-            w_i = x2_i - x1_i
-            h_i = y2_i - y1_i
-            i_areas = torch.where(w_i >= 0, w_i, 0) * torch.where(h_i >= 0, h_i, 0)
-            
-            # Compute the area of the union.
-            b1_areas = (boxes1[:,3] - boxes1[:,1]) * (boxes1[:,2] - boxes1[:,0])
-            b2_areas = (boxes2[:,3] - boxes2[:,1]) * (boxes2[:,2] - boxes2[:,0])
-            u_areas = b1_areas + b2_areas - i_areas
-
-            return i_areas/u_areas
+    def build_dataloader(self, dataset, shuffle=False, batch_size=1, num_workers=0):
+        """
+        ### Add doc
+        """
+        return DataLoader(dataset, 
+                            batch_size=batch_size, 
+                            shuffle=shuffle, 
+                            num_workers=num_workers,
+                            collate_fn=dataset_formatting,
+                            pin_memory=True,
+                            persistent_workers=num_workers>0)

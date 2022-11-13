@@ -41,8 +41,6 @@ def main(args):
     num_workers = args.num_workers
     cuda = args.cuda
 
-    save_path = f"{save_path}/{model_type}/{backbone_type}" # For development purposes DELETE FOR DEPLOYMENT
-
     # check command line args...
     if epochs <= 0:
         print(f"Epochs must be a postive integer but was {epochs}.")
@@ -57,7 +55,7 @@ def main(args):
         sys.exit()
 
     if num_workers < -1:
-        print(f"Number of workers must be postive integer or -1 but was {batch_size}.")
+        print(f"Number of workers must be postive integer or -1 but was {num_workers}.")
 
     if num_workers == -1:
         num_workers= mp.cpu_count()
