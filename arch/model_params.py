@@ -4,7 +4,7 @@ import torch.nn as nn
 def calc_out_dim(in_dim, padding, dilation, kernel_size, stride) -> int:
     return (in_dim + 2 * padding - dilation * (kernel_size - 1) - 1) // stride + 1
 
-in_dim = (3,400,400)
+in_dim = (3,200,200)
 out_dim = 200
 
 fc_layer2_neurons = 800
@@ -73,11 +73,12 @@ fc_inputs = int(conv3_filters * maxpool3_dim_w * maxpool3_dim_h)
 lin1 = nn.Linear(fc_inputs, fc_layer2_neurons)
 lin2 = nn.Linear(fc_layer2_neurons, out_dim)
 
-print("CONV_LAYERS: 1    2   3")
-print("CONV_Hs   : {}".format([conv1_dim_h, conv2_dim_h, conv3_dim_h]))
-print("CONV_Ws   : {}".format([conv1_dim_w, conv2_dim_w, conv3_dim_w]))
-print("MAXPOOL_Hs: {}".format([maxpool1_dim_h, maxpool2_dim_h, maxpool3_dim_h]))
-print("MAXPOOL_Ws: {}".format([maxpool1_dim_w, maxpool2_dim_w, maxpool3_dim_w]))
-print("DENSE_LAYERS:  1      2")
-print("DENSE       : {}".format([fc_inputs,fc_layer2_neurons]))
-print("OUTPUT: {}".format(out_dim))
+if __name__ == "__main__":
+    print("CONV_LAYERS: 1    2   3")
+    print("CONV_Hs   : {}".format([conv1_dim_h, conv2_dim_h, conv3_dim_h]))
+    print("CONV_Ws   : {}".format([conv1_dim_w, conv2_dim_w, conv3_dim_w]))
+    print("MAXPOOL_Hs: {}".format([maxpool1_dim_h, maxpool2_dim_h, maxpool3_dim_h]))
+    print("MAXPOOL_Ws: {}".format([maxpool1_dim_w, maxpool2_dim_w, maxpool3_dim_w]))
+    print("DENSE_LAYERS:  1      2")
+    print("DENSE       : {}".format([fc_inputs,fc_layer2_neurons]))
+    print("OUTPUT: {}".format(out_dim))
