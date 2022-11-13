@@ -12,33 +12,6 @@ from region_proposal_network import RegionProposalNetwork
 
 import pandas as pd
 
-
-def inference(model, image_p_batch):
-    N_batchs = int(len(image_paths) // batch_size)
-    rem = len(image_paths) % batch_size
-
-    results_df = pd.DataFrame(columns=["Image Path", "x1", "y2", "x2", "y2"])
-
-    for i in tqdm(range(N_batchs+1)):
-        if i != N_batchs or rem == 0:
-            image_p_batch = image_paths[i*batch_size:(i+1)*batch_size]
-        else:
-            image_p_batch = image_paths[i*batch_size:]
-
-        X_batch = model.preprocess(image_p_batch)
-        y_batch = model.propose(X_batch)
-        for image_path, X, y in zip(image_p_batch, X_batch, y_batch):
-            if save_images:
-                X_boxed = draw_bounding_boxes((X * 255).type(torch.uint8), y["boxes"].type(torch.int16), colors="green", width=2)
-                X_boxed = torch.moveaxis(X_boxed, 0, -1).numpy()
-                X_boxed = cv2.cvtColor(X_boxed, cv2.COLOR_RGB2BGR) # RGB to BGR
-                cv2.imwrite(os.path.join(out_path, os.path.basename(image_path)), X_boxed)
-            
-            for bbox in y["boxes"]:
-                results_df.loc[len(results_df.index)] = [image_path, int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])]
-    
-    return results_df
-
 def get_arg_parser():
     import argparse
     parser = argparse.ArgumentParser(description="Run inference on a region proposal network.")

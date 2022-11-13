@@ -255,32 +255,31 @@ class RegionProposalNetwork():
         except Exception as e:
             raise Exception(e)  
 
-    def save(self, save_path, save_name):
+    def save(self, save_path):
         """
         Save the model to specified path.
         
         Parameters:
-            save_path [str]: Path to directory to save model weights too.
-            save_name [str]: Name of the model folder.
+            save_path [str]: Path to directory to save model files too.
 
         Returns:
             [str]: Path to the folder the model files were saved too.
-        """
-        save_dir = os.path.join(save_path, save_name)
-        
-        if not os.path.isdir(save_dir):
-            os.makedirs(save_dir)
+        """     
+        save_name = save_path.split(os.path.sep)[-1]
+
+        if not os.path.isdir(save_path):
+            os.makedirs(save_path)
 
         # save model weights.
         model_weights = self._model.state_dict()
-        torch.save(model_weights, os.path.join(save_dir, f"{save_name}_weights.pth"))
+        torch.save(model_weights, os.path.join(save_path, f"{save_name}_weights.pth"))
         
         # save model metadata.
         self._model_metadata["weight_hash"] = sha256(str(model_weights).encode()).hexdigest()
-        with open(os.path.join(save_dir, f"{save_name}_metadata.json"), "w") as f:
+        with open(os.path.join(save_path, f"{save_name}_metadata.json"), "w") as f:
             json.dump(self._model_metadata, f, indent=1)
-
-        return save_dir
+        
+        return save_path
 
     def load(self, load_path):
         """
@@ -414,13 +413,13 @@ class RegionProposalNetwork():
 
             if checkpoints > 0:
                 if e % checkpoints == 0:
-                    self.save(save_path, f"checkpoint_{e+1}")
+                    self.save(os.path.join(save_path, f"checkpoint_{e+1}"))
 
             if sched:
                 sched.step()
         
         self._model.load_state_dict(best_model_wts)
-        file_path = self.save(save_path, "best_model")
+        file_path = self.save(os.path.join(save_path, "best_model"))
 
         if progress:
             print(f"Saved best model to '{file_path}' which achived a validation mAP@.5:.05:.95 of {best_acc:.4f}.")

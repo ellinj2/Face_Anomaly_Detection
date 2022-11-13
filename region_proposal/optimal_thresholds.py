@@ -13,14 +13,12 @@ from face_dataset import WFFaceDataset
 from utils import get_image_paths
 
 def correct_incorrect_missing(y_trues, y_preds):
-    tp, fp, fn = (0,0,0)
-    # for y_true, y_pred in zip(y_trues, y_preds):
     iou_scores = box_iou(y_trues["boxes"], y_preds["boxes"])
     sum_value = torch.sum(iou_scores >= 0.5, dim=1)
 
-    tp += int(torch.sum(sum_value > 0))
-    fp += int(torch.sum(torch.where(sum_value > 1, sum_value-1, 0)))
-    fn += int(torch.sum(sum_value == 0))
+    tp = int(torch.sum(sum_value > 0))
+    fp = int(torch.sum(torch.where(sum_value > 1, sum_value-1, 0)))
+    fn = int(torch.sum(sum_value == 0))
 
     return (tp, fp, fn)
 
@@ -99,7 +97,7 @@ def main(args):
         y_batchs_trues.append(y)
         y_batchs_preds.append(model.propose(X))
 
-    df = pd.DataFrame(columns=["iou_threshold", "score_threshold", "f1@IoU:0.5", "precision@IoU:0.5", "recall@IoU:0.5"])
+    result_df = pd.DataFrame(columns=["iou_threshold", "score_threshold", "f1@IoU:0.5", "precision@IoU:0.5", "recall@IoU:0.5", "tp", "fp", "fn"])
     thresholds = [i/10 for i in range(1, 10)]
     for iou_threshold in tqdm(thresholds):
         for score_threshold in tqdm(thresholds, leave=False):
@@ -121,15 +119,15 @@ def main(args):
             recall = true_pos / (true_pos + false_neg) if true_pos + false_neg != 0 else 0
             f1_score = 2 * precision * recall / (precision + recall) if precision + recall != 0 else 0
 
-            df.loc[len(df.index)] = [iou_threshold, score_threshold, f1_score, precision, recall]
+            result_df.loc[len(result_df.index)] = [iou_threshold, score_threshold, f1_score, precision, recall, true_pos, false_pos, false_neg]
     
-    idx_max = df["f1@IoU:0.5"].idxmax()
-    best_iou_threshold = df["iou_threshold"][idx_max]
-    best_score_threshold = df["score_threshold"][idx_max]
-    print(best_iou_threshold, best_score_threshold)
+    idx_max = result_df["f1@IoU:0.5"].idxmax()
+    best_iou_threshold = result_df["iou_threshold"][idx_max]
+    best_score_threshold = result_df["score_threshold"][idx_max]
     model.update_nms_thresholds(best_iou_threshold, best_score_threshold)
-    print(df)
-    model.save(model_path, "optimized")
+
+    model.save(os.path.join(model_path))
+    result_df.to_csv(os.path.join(model_path, "threshold_optimization.csv"), index=False)
     print("Done")
             
 if __name__ == "__main__":
