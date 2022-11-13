@@ -505,6 +505,9 @@ class RegionProposalNetwork():
         """
         self._model.nms_thresh = iou_threshold
         self._model.score_thresh = score_threshold
+        
+        self._model_metadata["parameters"]["nms_thresh"] = iou_threshold
+        self._model_metadata["parameters"]["score_thresh"] = score_threshold
 
     def build_dataloader(self, dataset, shuffle=False, batch_size=1, num_workers=0):
         """

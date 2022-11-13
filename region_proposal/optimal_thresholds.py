@@ -14,13 +14,13 @@ from utils import get_image_paths
 
 def correct_incorrect_missing(y_trues, y_preds):
     tp, fp, fn = (0,0,0)
-    for y_true, y_pred in zip(y_trues, y_preds):
-        iou_scores = box_iou(y_true["boxes"], y_pred["boxes"])
-        sum_value = torch.sum(iou_scores >= 0.5, dim=1)
+    # for y_true, y_pred in zip(y_trues, y_preds):
+    iou_scores = box_iou(y_trues["boxes"], y_preds["boxes"])
+    sum_value = torch.sum(iou_scores >= 0.5, dim=1)
 
-        tp += int(torch.sum(sum_value > 0, 1, 0))
-        fp += int(torch.sum(torch.where(sum_value > 1, sum_value-1, 0)))
-        fn += int(torch.sum(sum_value == 0, 1, 0))
+    tp += int(torch.sum(sum_value > 0))
+    fp += int(torch.sum(torch.where(sum_value > 1, sum_value-1, 0)))
+    fn += int(torch.sum(sum_value == 0))
 
     return (tp, fp, fn)
 
@@ -42,6 +42,7 @@ def main(args):
     batch_size = args.batch_size
     recursive = args.recursive
     cuda = args.cuda
+    num_workers = args.num_workers
 
     if num_workers < -1:
         print(f"Number of workers must be postive integer or -1 but was {num_workers}.")
@@ -93,13 +94,15 @@ def main(args):
 
     y_batchs_trues, y_batchs_preds = ([], [])
     for X, y in tqdm(dataloader):
+        if cuda:
+            y = y = [{"boxes": t.to("cuda:0"), "labels": torch.ones(len(t), dtype=torch.int64).to("cuda:0")} for t in y]
         y_batchs_trues.append(y)
-        y_batchs_preds.append(model.propose())
+        y_batchs_preds.append(model.propose(X))
 
     df = pd.DataFrame(columns=["iou_threshold", "score_threshold", "f1@IoU:0.5", "precision@IoU:0.5", "recall@IoU:0.5"])
     thresholds = [i/10 for i in range(1, 10)]
-    for iou_threshold in reversed(thresholds):
-        for score_threshold in thresholds:
+    for iou_threshold in tqdm(thresholds):
+        for score_threshold in tqdm(thresholds, leave=False):
             true_pos, false_pos, false_neg = (0, 0, 0)
             for y_batch_trues, y_batch_preds in zip(y_batchs_trues, y_batchs_preds):
                 for y_true, y_pred in zip(y_batch_trues, y_batch_preds):
@@ -116,16 +119,17 @@ def main(args):
 
             precision = true_pos / (true_pos + false_pos) if true_pos + false_pos != 0 else 0
             recall = true_pos / (true_pos + false_neg) if true_pos + false_neg != 0 else 0
-            f1_score = 2 * precision * recall / (precision + recall) 
+            f1_score = 2 * precision * recall / (precision + recall) if precision + recall != 0 else 0
 
             df.loc[len(df.index)] = [iou_threshold, score_threshold, f1_score, precision, recall]
     
-    idx_max = df["f1@0.5"].idxmax()
+    idx_max = df["f1@IoU:0.5"].idxmax()
     best_iou_threshold = df["iou_threshold"][idx_max]
     best_score_threshold = df["score_threshold"][idx_max]
     print(best_iou_threshold, best_score_threshold)
     model.update_nms_thresholds(best_iou_threshold, best_score_threshold)
-    # model.save(load)
+    print(df)
+    model.save(model_path, "optimized")
     print("Done")
             
 if __name__ == "__main__":

@@ -87,6 +87,7 @@ def main(args):
     image_paths = get_image_paths(data_path, recursive)
 
     N_batchs = int(len(image_paths) // batch_size)
+    N_batchs = 20
     rem = len(image_paths) % batch_size
 
     results_df = pd.DataFrame(columns=["Image Path", "x1", "y2", "x2", "y2"])
