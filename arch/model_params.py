@@ -4,7 +4,7 @@ import torch.nn as nn
 def calc_out_dim(in_dim, padding, dilation, kernel_size, stride) -> int:
     return (in_dim + 2 * padding - dilation * (kernel_size - 1) - 1) // stride + 1
 
-in_dim = (3,200,200)
+in_dim = (3,400,400)
 out_dim = 200
 
 fc_layer2_neurons = 800
@@ -72,6 +72,16 @@ fc_inputs = int(conv3_filters * maxpool3_dim_w * maxpool3_dim_h)
 # DENSE LAYERS
 lin1 = nn.Linear(fc_inputs, fc_layer2_neurons)
 lin2 = nn.Linear(fc_layer2_neurons, out_dim)
+
+# DECODER ARCHITECTURE
+decode_lin1 = nn.Linear(out_dim, fc_layer2_neurons)
+decode_lin2 = nn.Linear(fc_layer2_neurons, fc_inputs)
+
+decode_unflatten = nn.Unflatten(dim=-1, unflattened_size=(conv3_filters, maxpool3_dim_h, maxpool3_dim_w))
+
+decode_conv1 = nn.ConvTranspose2d(conv3_filters, conv2_filters, conv3_kernel_size[0]-conv3_padding, stride=2)
+decode_conv2 = nn.ConvTranspose2d(conv2_filters, conv1_filters, conv2_kernel_size[0]-conv2_padding, stride=2)
+decode_conv3 = nn.ConvTranspose2d(conv1_filters, 3, conv1_kernel_size[0]-conv1_padding, stride=2)
 
 if __name__ == "__main__":
     print("CONV_LAYERS: 1    2   3")
