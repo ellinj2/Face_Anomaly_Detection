@@ -44,6 +44,9 @@ class AnomalyDetectorModel:
 		"""
 		return self.detector.fit(X, **kwargs)
 
+	def fit_predict(self, X, **kwargs):
+		return self.detector.fit_predict(X, **kwargs)
+
 class AnomalyDetectorLoss:
 	"""
 	Loss functions for anomaly detection in-situ for the embedding model
