@@ -104,6 +104,7 @@ if [[ ! -e "ffhq-dataset-v2.json" ]]; then
 	wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=$FILEID' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=$FILEID" -O "ffhq-dataset-v2.json" && rm -rf /tmp/cookies.txt
 fi
 
+# MOUNT GDRIVE
 if [[ FFHQ -eq 1 ]]; then
 	cd "train"
 	rclone mount mydrive:in-the-wild-images/ . &
