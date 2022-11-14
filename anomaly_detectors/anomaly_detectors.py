@@ -32,6 +32,7 @@ class AnomalyDetectorModel:
 		Returns:
 			pytorch.tensor or similar : Return from self.detector
 		"""
+		return self.detector.predict(X, **kwargs)
 
 	def fit(self, X, **kwargs):
 		"""
@@ -41,6 +42,7 @@ class AnomalyDetectorModel:
 			X [pytorch.tensor or similar] : Input data to be processed
 			kwargs : keyword arguments to be passed to self.detector training (could include Y data)
 		"""
+		return self.detector.fit(X, **kwargs)
 
 class AnomalyDetectorLoss:
 	"""
@@ -63,7 +65,7 @@ class AnomalyDetectorLoss:
 			kwargs : keyword arguments to be passed to self.__call__
 		"""
 		self.f = f if type(f) is not str else LOSS_MAP[f]
-		self.args = **kwargs
+		self.args = kwargs
 
 	def __call__(self, **kwargs):
 		"""
@@ -72,4 +74,4 @@ class AnomalyDetectorLoss:
 		Parameters:
 			kwargs : keyword arguments to be passed to self.f
 		"""
-		return self.f(self.args | **kwargs)
+		return self.f(self.args | kwargs)
