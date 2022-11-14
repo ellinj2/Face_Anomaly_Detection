@@ -6,6 +6,7 @@
 # DATA FLAGS
 # 0 for ignore, 1 for download
 WIDERFACE_TRAIN=1
+WIDERFACE_VALID=0
 WIDERFACE_TEST=0
 FFHQ=0
 
@@ -43,6 +44,7 @@ cd wider_face
 
 # Check/Create train and test
 add_folder "train"
+add_folder "valid"
 add_folder "test"
 
 if [[ $WIDERFACE_TRAIN -eq 1 ]]; then
@@ -56,8 +58,19 @@ if [[ $WIDERFACE_TRAIN -eq 1 ]]; then
 	cd ..
 fi
 
-if [[ $WIDERFACE_TEST -eq 1 ]]; then
+if [[ $WIDERFACE_VALID -eq 1 ]]; then
 	cd test
+	if [[ ! -d "0--Parade" ]]; then
+		download "https://huggingface.co/datasets/wider_face/resolve/main/data/WIDER_val.zip" "widerface.zip" "y"
+		mv WIDER_val/images/* ./
+		rm -r WIDER_val/
+		rm widerface.zip
+	fi
+	cd ..
+fi
+
+if [[ $WIDERFACE_TEST -eq 1 ]]; then
+	cd valid
 	if [[ ! -d "0--Parade" ]]; then
 		download "https://huggingface.co/datasets/wider_face/resolve/main/data/WIDER_test.zip" "widerface.zip" "y"
 		mv WIDER_test/images/* ./
@@ -67,13 +80,12 @@ if [[ $WIDERFACE_TEST -eq 1 ]]; then
 	cd ..
 fi
 
-if [[ $WIDERFACE_TRAIN -eq 1 || $WIDERFACE_TEST -eq 1 ]]; then
-	if [[ ! -e "wider_face_train_bbx_gt.txt" ]]; then
-		download "http://shuoyang1213.me/WIDERFACE/support/bbx_annotation/wider_face_split.zip" "wider_face_split.zip" "y"
-		mv wider_face_split/* .
-		rm -r wider_face_split
-		rm wider_face_split.zip
-	fi
+# DOWNLOAD BBOXES
+if [[ ! -e "wider_face_train_bbx_gt.txt" ]]; then
+	download "http://shuoyang1213.me/WIDERFACE/support/bbx_annotation/wider_face_split.zip" "wider_face_split.zip" "y"
+	mv wider_face_split/* .
+	rm -r wider_face_split
+	rm wider_face_split.zip
 fi
 
 cd ..
