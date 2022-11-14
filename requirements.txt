@@ -1,0 +1,6 @@
+pandas
+torch
+torchvision
+opencv-python
+albumentations
+seaborn
