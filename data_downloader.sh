@@ -5,7 +5,7 @@
 
 # DATA FLAGS
 # 0 for ignore, 1 for download
-WIDERFACE_TRAIN=1
+WIDERFACE_TRAIN=0
 WIDERFACE_VALID=0
 WIDERFACE_TEST=0
 FFHQ=0
@@ -92,4 +92,20 @@ cd ..
 # END WIDER_FACE
 
 # BEGIN FFHQ
+add_folder in-the-wild-images
+cd in-the-wild-images
+
+add_folder "train"
+add_folder "test"
+
+# DOWNLOAD JSON
+if [[ ! -e "ffhq-dataset-v2.json" ]]; then
+	FILEID="16N0RV4fHI6joBuKbQAoG34V_cQk7vxSA"
+	wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=$FILEID' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=$FILEID" -O "ffhq-dataset-v2.json" && rm -rf /tmp/cookies.txt
+fi
+
+#if [[ FFHQ -eq 1 ]]; then
+
+#fi
+
 # END FFHQ
