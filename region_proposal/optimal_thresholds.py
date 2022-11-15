@@ -12,9 +12,9 @@ from region_proposal_network import RegionProposalNetwork
 from face_dataset import WFFaceDataset
 from utils import get_image_paths
 
-def correct_incorrect_missing(y_trues, y_preds):
-    order_idxs = torch.argsort(y_preds["scores"])
-    y_pred = {k: v[order_idxs] for k, v in y_preds.items()}
+def correct_incorrect_missing(y_trues, y_preds, detection_threshold=0.5):
+    order_idxs = torch.argsort(y_preds["scores"], descending=True)
+    y_preds = {k: v[order_idxs] for k, v in y_preds.items()}
 
     iou_scores = box_iou(y_trues["boxes"], y_preds["boxes"])
 
@@ -26,7 +26,7 @@ def correct_incorrect_missing(y_trues, y_preds):
             if y_trues["labels"][g] == y_preds["labels"][d] and iou_scores[g][d] > max_iou:
                 max_iou, gt_idx = iou_scores[g][d], g
 
-        if max_iou >= 0.5:
+        if max_iou >= detection_threshold:
             tp += 1
             keep_idxs = torch.where(torch.arange(len(y_trues["boxes"])) != gt_idx)
             y_trues = {k: v[keep_idxs] for k, v in y_trues.items()}
@@ -39,12 +39,13 @@ def correct_incorrect_missing(y_trues, y_preds):
 
 def get_arg_parser():
     import argparse
-    parser = argparse.ArgumentParser(description="")
-    parser.add_argument("--model_path", type=str, required=True, help=".")
-    parser.add_argument("--data_path", type=str, required=True, help="")
-    parser.add_argument("--batch_size", type=int, default=1, help="")
+
+    parser = argparse.ArgumentParser(description="Script to set optimal iou and score thresholds for non-maximum suppression.")
+    parser.add_argument("--model_path", type=str, required=True, help="Path to model folder.")
+    parser.add_argument("--data_path", type=str, required=True, help="Path to data folder.")
+    parser.add_argument("--batch_size", type=int, default=1, help="Number of images to batch while running inference. (Default: 1)")
     parser.add_argument("--num_workers", type=int, default=0, help="Number of workers to load data. Set to -1 to use all cpu cores. (Default: 0)")
-    parser.add_argument("-r", "--recursive", action="store_true", help="")
+    parser.add_argument("-r", "--recursive", action="store_true", help="Set flag if images are in subfolders under data_path.")
     parser.add_argument("-c", "--cuda", action="store_true", help="Set flag if model should be loaded and trained on a GPU. By default the model will run on cpu.")
 
     return parser

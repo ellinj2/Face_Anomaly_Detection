@@ -8,7 +8,6 @@ from face_dataset import WFFaceDataset
 from region_proposal_network import RegionProposalNetwork
 
 from torch.optim import Adam
-import torch
 
 def get_arg_parser():
     import argparse
@@ -60,6 +59,7 @@ def main(args):
     if num_workers == -1:
         num_workers= mp.cpu_count()
 
+    # data arg check.
     if not os.path.isdir(data_folder):
         print(f"{data_folder} is not a valid directory.")
         sys.exit()
@@ -69,33 +69,9 @@ def main(args):
         print(f"{data_folder} is missing a train subdirectory.")
         sys.exit()
 
-    train_txt = glob(os.path.join(train_data_path, "*.txt"))
-    if len(train_txt) != 1:
-        print(f"{train_data_path} should contain one txt file.")
-        sys.exit()
-    train_txt = train_txt[0]
-
-    train_mat = glob(os.path.join(train_data_path, "*.mat"))
-    if len(train_mat) != 1:
-        print(f"{train_data_path} should contain one txt file.")
-        sys.exit()
-    train_mat = train_mat[0]
-
     valid_data_path = os.path.join(data_folder, "validation")
     if not os.path.isdir(valid_data_path):
         print(f"{data_folder} is missing a validation subdirectory.")
-    valid_txt = glob(os.path.join(valid_data_path, "*.txt"))
-
-    if len(valid_txt) != 1:
-        print(f"{valid_data_path} should contain one txt file.")
-        sys.exit()
-    valid_txt = valid_txt[0]
-
-    valid_mat = glob(os.path.join(valid_data_path, "*.mat"))
-    if len(valid_mat) != 1:
-        print(f"{valid_data_path} should contain one txt file.")
-        sys.exit()
-    valid_mat = valid_mat[0]
 
     if not os.path.isdir(save_path):
         os.makedirs(save_path)
@@ -107,14 +83,11 @@ def main(args):
 
     # load datasets.
     print("Loading Training Dataset...")
-    train_dataset = WFFaceDataset(train_txt, train_mat, train_data_path)
+    train_dataset = WFFaceDataset(train_data_path)
     print("Loading Validation Dataset...")
-    valid_dataset = WFFaceDataset(valid_txt, valid_mat, valid_data_path)
+    valid_dataset = WFFaceDataset(valid_data_path)
 
-    if load_checkpoint:
-        model = RegionProposalNetwork(load_path=load_checkpoint)
-    else:
-        model = RegionProposalNetwork(model_type, backbone_type)
+    model = RegionProposalNetwork(load_path=load_checkpoint) if load_checkpoint else RegionProposalNetwork(model_type, backbone_type)
 
     if cuda:
         model.to("cuda:0")
