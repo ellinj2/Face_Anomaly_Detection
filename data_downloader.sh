@@ -44,7 +44,7 @@ cd wider_face
 
 # Check/Create train and test
 add_folder "train"
-add_folder "valid"
+add_folder "validation"
 add_folder "test"
 
 if [[ $WIDERFACE_TRAIN -eq 1 ]]; then
@@ -59,7 +59,7 @@ if [[ $WIDERFACE_TRAIN -eq 1 ]]; then
 fi
 
 if [[ $WIDERFACE_VALID -eq 1 ]]; then
-	cd test
+	cd validation
 	if [[ ! -d "0--Parade" ]]; then
 		download "https://huggingface.co/datasets/wider_face/resolve/main/data/WIDER_val.zip" "widerface.zip" "y"
 		mv WIDER_val/images/* ./
@@ -70,7 +70,7 @@ if [[ $WIDERFACE_VALID -eq 1 ]]; then
 fi
 
 if [[ $WIDERFACE_TEST -eq 1 ]]; then
-	cd valid
+	cd test
 	if [[ ! -d "0--Parade" ]]; then
 		download "https://huggingface.co/datasets/wider_face/resolve/main/data/WIDER_test.zip" "widerface.zip" "y"
 		mv WIDER_test/images/* ./
@@ -81,11 +81,15 @@ if [[ $WIDERFACE_TEST -eq 1 ]]; then
 fi
 
 # DOWNLOAD BBOXES
-if [[ ! -e "wider_face_train_bbx_gt.txt" ]]; then
+if [[ ! -e "train/wider_face_train_bbx_gt.txt" ]]; then
 	download "http://shuoyang1213.me/WIDERFACE/support/bbx_annotation/wider_face_split.zip" "wider_face_split.zip" "y"
 	mv wider_face_split/* .
 	rm -r wider_face_split
 	rm wider_face_split.zip
+	# Copy files to correct locations
+	mv *_test* test/
+	mv *_val* validation/
+	mv *_train* train/
 fi
 
 cd ..
