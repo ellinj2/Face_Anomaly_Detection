@@ -2,10 +2,9 @@ import os
 import sys
 from tqdm import tqdm
 
-import cv2
-
 import torch
 from torchvision.utils import draw_bounding_boxes
+from torchvision.transforms import ToPILImage
 
 from utils import get_image_paths
 from region_proposal_network import RegionProposalNetwork
@@ -16,12 +15,11 @@ def get_arg_parser():
     import argparse
     parser = argparse.ArgumentParser(description="Run inference on a region proposal network.")
 
-    parser.add_argument("--model_path", type=str, required=True, help="") 
-    parser.add_argument("--data_path", type=str, required=True, help="")
+    parser.add_argument("--model_path", type=str, required=True, help="Path to model folder.")
+    parser.add_argument("--data_path", type=str, required=True, help="Path to data folder.")
     parser.add_argument("--out_path", type=str, required=True, help="Path to output results too.")
-    parser.add_argument("--batch_size", type=int, default=1, help="")
-    parser.add_argument("-r", "--recursive", action="store_true", help="")
-    # parser.add_argument("-w", "--worker", action="store_true", help="Set flag if dataloading worker is wanted. Defaults to false.") # will be implmented soon.
+    parser.add_argument("--batch_size", type=int, default=1, help="Number of images to batch while running inference. (Default: 1)")
+    parser.add_argument("-r", "--recursive", action="store_true", help="Set flag if images are in subfolders under data_path.")
     parser.add_argument("-i", "--images", action="store_true", help="Set flag if image with bounding boxes is desired. Worker is recommended for large number of images as script speed decresses substationally.")
     parser.add_argument("-c", "--cuda", action="store_true", help="Set flag if model should be loaded and trained on a GPU. By default the model will run on cpu.")
 
@@ -33,7 +31,6 @@ def main(args):
     out_path = args.out_path
     batch_size = args.batch_size
     recursive = args.recursive
-    # worker = args.worker
     save_images = args.images
     cuda = args.cuda
 
@@ -58,15 +55,13 @@ def main(args):
         model.to("cuda:0") 
 
     image_paths = get_image_paths(data_path, recursive)
-
     N_batchs = int(len(image_paths) // batch_size)
-    N_batchs = 20
-    rem = len(image_paths) % batch_size
+    toPIL = ToPILImage() # used if images flag was set.
 
     results_df = pd.DataFrame(columns=["Image Path", "x1", "y2", "x2", "y2"])
 
     for i in tqdm(range(N_batchs+1)):
-        if i != N_batchs or rem == 0:
+        if (i+1)*batch_size < len(image_paths):
             image_p_batch = image_paths[i*batch_size:(i+1)*batch_size]
         else:
             image_p_batch = image_paths[i*batch_size:]
@@ -75,10 +70,11 @@ def main(args):
         y_batch = model.propose(X_batch)
         for image_path, X, y in zip(image_p_batch, X_batch, y_batch):
             if save_images:
-                X_boxed = draw_bounding_boxes((X * 255).type(torch.uint8), y["boxes"].type(torch.int16), colors="green", width=2)
-                X_boxed = torch.moveaxis(X_boxed, 0, -1).numpy()
-                X_boxed = cv2.cvtColor(X_boxed, cv2.COLOR_RGB2BGR) # RGB to BGR
-                cv2.imwrite(os.path.join(out_path, os.path.basename(image_path)), X_boxed)
+                X = (X * 255).type(torch.uint8)
+                y["boxes"] = y["boxes"].type(torch.int16)
+
+                X_boxed = draw_bounding_boxes(X, y["boxes"], colors="green", width=2)
+                toPIL(X_boxed).save(os.path.join(out_path, os.path.basename(image_path)))
             
             for bbox in y["boxes"]:
                 results_df.loc[len(results_df.index)] = [image_path, int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])]

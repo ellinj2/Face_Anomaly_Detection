@@ -7,17 +7,16 @@ from glob import glob
 import torch
 import numpy as np
 from tqdm import tqdm
-import time
 
 from torch.utils.data import DataLoader
 
 from torch import nn
 from functools import partial
 
-import cv2
+from PIL import Image
 import torchvision.transforms as transforms
 
-from torchvision.ops import misc, feature_pyramid_network, box_iou
+from torchvision.ops import misc, feature_pyramid_network
 from torchvision.models import resnet
 from torchvision.models.detection import RetinaNet, FCOS, backbone_utils
 from torchvision.models.detection.retinanet import RetinaNetHead, _default_anchorgen
@@ -41,8 +40,6 @@ class RegionProposalNetwork():
     """    
     Class that implments the region proposal network.
 	Attributes:
-        iou_threshold [float]: Value in the range (0,1] which respensted the maximum detection overlap.
-        score_threshold [float]: Value in the range (0,1) which respensted the minimum detection score.
         device [str]: The device that model is store and computations occur.
 	Methods:
         parameters: Get model parameters.
@@ -123,12 +120,12 @@ class RegionProposalNetwork():
         Builds RetinaNet model.
 
         Parameters:
-			backbone [TBD]: Model to be used as the backbone for the RetinaNet object detector.
+			backbone [torch.nn]: Model to be used as the backbone for the RetinaNet object detector.
             kwargs: Dictionary of arguments to be passed to the RetinaNet detector API.
                     API Docs: https://pytorch.org/vision/0.12/_modules/torchvision/models/detection/retinanet.html
 
         Returns:
-            [TBD]: RetinaNet model with one object detection.
+            [torchvision.models.detection.retinanet.RetinaNet]: RetinaNet model with one object detection.
         """
         anchor_generator = _default_anchorgen()
 
@@ -143,9 +140,7 @@ class RegionProposalNetwork():
         return RetinaNet(backbone, 
                         num_classes=2, 
                         anchor_generator=anchor_generator, 
-                        head=head, 
-                        # score_thresh=0.05,
-                        # nms_thresh=1,
+                        head=head,
                         **kwargs)
 
     def __fcos(self, backbone, **kwargs):
@@ -153,18 +148,14 @@ class RegionProposalNetwork():
         Builds FCOS model.
 
         Parameters:
-			backbone [TBD]: Model to be used as the backbone for the FCOS object detector.
+			backbone [torch.nn]: Model to be used as the backbone for the FCOS object detector.
             kwargs: Dictionary of arguments to be passed to the FCOS detector API.
                     API Docs: https://pytorch.org/vision/main/_modules/torchvision/models/detection/fcos.html
 
         Returns:
-            [TBD]: FCOS model with one object detection.
+            [torchvision.models.detection.fcos.FCOS]: FCOS model with one object detection.
         """
-        return FCOS(backbone, 
-                    num_classes=2, 
-                    # score_thresh=0.05,
-                    # nms_thresh=1,
-                    **kwargs)
+        return FCOS(backbone, num_classes=2, **kwargs)
 
     def __resnet_backbone(self, object_detector, resnet_type, trainable_backbone_layers=None, pretrained_backbone=True, progress=False):
         """
@@ -233,12 +224,33 @@ class RegionProposalNetwork():
 
         return backbone
 
+    def __build_dataloader(self, dataset, shuffle=False, batch_size=1, num_workers=0):
+        """
+        Creates dataloader for a dataset.
+
+        Parameters:
+            dataset [torch.utils.data.Dataset]: 
+            shuffle [bool]: Shuffle data while loading. (Default: False)
+            batch_size [int]: Number of images to load in each batch. (Default: 1)
+            num_workers [int]: Number of workers to use for dataloading. (Default: 0)
+        
+        Returns:
+            [torch.utils.data.DataLoader]: Dataloader object for the provided dataset.
+        """
+        return DataLoader(dataset, 
+                            batch_size=batch_size, 
+                            shuffle=shuffle, 
+                            num_workers=num_workers,
+                            collate_fn=dataset_formatting,
+                            pin_memory=True,
+                            persistent_workers=num_workers>0)
+
     def parameters(self):
         """
         Returns the model parameters.
 
         Returns:
-            [TBD]: Object detector parameters.
+            [generator]: Generator containing torch.nn.parameter.Parameter objects for the detector.
         """
         return self._model.parameters()
 
@@ -333,8 +345,8 @@ class RegionProposalNetwork():
 
         train_dataset, valid_dataset = datasets
         
-        train_loader = self.build_dataloader(train_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
-        valid_loader = self.build_dataloader(valid_dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+        train_loader = self.__build_dataloader(train_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers)
+        valid_loader = self.__build_dataloader(valid_dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
 
         sched, optim = optimizer if isinstance(optimizer, tuple) else (None, optimizer)
 
@@ -366,15 +378,8 @@ class RegionProposalNetwork():
             for i, (X, y) in enumerate(train_e_loader):
                 X = [x.to(self.device) for x in X]
                 y = [{"boxes": t.to(self.device), "labels": torch.ones(len(t), dtype=torch.int64).to(self.device)} for t in y]
-                try:
-                    loss_dict = self._model(X, y)
-                except Exception as e:
-                    ys = [_y['boxes'] for _y in y]
-                    for i in range(len(y)):
-                        print(X[i], ys[i])
-                    print(e)
-                    exit()
 
+                loss_dict = self._model(X, y)
                 batch_loss = sum(b_loss for b_loss in loss_dict.values())
                 loss += batch_loss.item()
 
@@ -431,7 +436,7 @@ class RegionProposalNetwork():
         Proposes regions on the input data. 
 
         Parameters:
-            X [TBD]: Image data to propose regions on.
+            X [list|torch.Tensor]: Either a list of tensor objects or a single tensor of shape [N, C, H, W].
 
         Returns:
             [list]: List of dictionaries with region proposals for each image in X.
@@ -456,8 +461,7 @@ class RegionProposalNetwork():
 
         transform = transforms.ToTensor()
         for image_path in image_paths:
-            image = cv2.imread(image_path)
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = Image.open(image_path)
             image = transform(image)
             image.to(self.device)
             images.append(image)
@@ -480,7 +484,7 @@ class RegionProposalNetwork():
         self._model.eval()
 
         if isinstance(dataset, torch.utils.data.Dataset):
-            dataloader = self.build_dataloader(dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
+            dataloader = self.__build_dataloader(dataset, shuffle=False, batch_size=batch_size, num_workers=num_workers)
         else:
             dataloader = dataset
 
@@ -500,22 +504,14 @@ class RegionProposalNetwork():
 
     def update_nms_thresholds(self, iou_threshold, score_threshold):
         """
-        ### Add Doc
+        Sets model non-maximum suppression thresholds.
+
+        Parameters:
+            iou_threshold [float]: Intersection over union threshold.
+            score_threshold [float]: Model detection score threshold.
         """
         self._model.nms_thresh = iou_threshold
         self._model.score_thresh = score_threshold
         
         self._model_metadata["parameters"]["nms_thresh"] = iou_threshold
         self._model_metadata["parameters"]["score_thresh"] = score_threshold
-
-    def build_dataloader(self, dataset, shuffle=False, batch_size=1, num_workers=0):
-        """
-        ### Add doc
-        """
-        return DataLoader(dataset, 
-                            batch_size=batch_size, 
-                            shuffle=shuffle, 
-                            num_workers=num_workers,
-                            collate_fn=dataset_formatting,
-                            pin_memory=True,
-                            persistent_workers=num_workers>0)
