@@ -12,3 +12,11 @@ data/in-the-wild-images/train/
 
 data/wider_face/train/
 data/wider_face/test/
+
+# files
+*.ipynb
+
+# folders
+data
+__pycache__
+.ipynb_checkpoints
