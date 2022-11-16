@@ -15,3 +15,10 @@ if [[ ! -d "data" ]]; then
 	mkdir data
 	echo "created data folder"
 fi
+
+
+if ! command -v rclone &> /dev/null
+then
+    sudo -v ; curl https://rclone.org/install.sh | sudo bash
+		rclone config create mydrive drive config_is_local=false
+fi

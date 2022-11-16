@@ -1,0 +1,18 @@
+Instructions for rclone use:
+
+- Run ./setup.sh:
+	This will download rclone and create a basic config
+- Call "rclone config", "e" for edit
+	- Select "1" for "mydrive"
+	- Enter to bypass options until Option Scope
+		- Select "2" for Read-only access
+	- Enter again to skip
+	- No to advanced config
+	- Yes to auto config
+	- Sign into Google account
+	- "y", yes this is okay
+	- "q" to quit
+- Now, before you mount the system with data_downloader.sh, go to your google drive and add a shortcut to this folder to your drive: "https://drive.google.com/open?id=1ZX7QOy6LZuTLTnsOtQk-kmKq2-69l5hu"
+- You're all set!
+- Run data_downloader with FFHQ=1
+- PROFIT?
