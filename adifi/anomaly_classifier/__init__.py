@@ -1,0 +1,1 @@
+from haround_model import AnomalyClassifier
