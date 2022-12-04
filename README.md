@@ -16,3 +16,6 @@ The full paper will be available upon release.
 - **Object Detection** performed by [**FCOS**](https://github.com/tianzhi0549/FCOS/)
 - **Anomaly Detection** using a deep two-class convolutional network and heuristic distribution transformation
 - **Labeled Image Generation** with negative-log-likelihood scores displayed in bounding boxes
+
+## Required Hardware
+Our model was run on two machines. The model was successfully trained and inferenced using a Ryzen 5700X CPU with NVIDIA RTX 3060 GPU, and 11th gen Intel core vPRO i9 with NVIDIA A5000.
