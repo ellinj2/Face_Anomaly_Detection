@@ -1,4 +1,5 @@
 import torch
+import torchvision
 from haroun import Data, Model, ConvPool
 from haroun.augmentation import augmentation
 from haroun.losses import rmse
@@ -38,7 +39,6 @@ class Network(torch.nn.Module):
         x = x.reshape(x.size(0), -1)
         print(f"CONV\t{pre}->\t{x.shape}")
         pre = x.shape
-        self.train = True
         
         self.net = torch.nn.Sequential(self.layer1, self.layer2, self.layer3, 
                                        self.layer4, self.layer5, self.layer6)
@@ -78,17 +78,20 @@ class Network(torch.nn.Module):
 class AnomalyClassifier:
     def __init__(self, load_path):
         self.image_size = (None, 3, 64, 64)
-        self.transform = torchvision.transforms.Resize(self.image_size)
+        self.transform = torchvision.transforms.Resize(self.image_size[2:])
         self.net = Network()
         self.net.load_state_dict(torch.load(load_path))
+        self.device = "cpu"
 
     def to(self, device):
         self.net.to(device)
+        self.device = device
 
     def preprocess(self, X):
-        return self.transform(X)
+        return self.transform(X.to(self.device))
 
     def classify(self, X):
+        self.net.eval()
         X = self.net(X)
-        X = torch.nn.Sigmoid()(X)
-        return ((X[:, 1] - X[:, 0]) + 1) / 2
+        return torch.nn.Sigmoid()(X)
+        # return (((X[:, 1] - X[:, 0]) + 1) / 2).detach()

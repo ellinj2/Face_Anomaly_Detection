@@ -1,1 +1,1 @@
-from haround_model import AnomalyClassifier
+from .haround_model import AnomalyClassifier
