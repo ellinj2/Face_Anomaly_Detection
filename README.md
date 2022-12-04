@@ -19,3 +19,7 @@ The full paper will be available upon release.
 
 ## Required Hardware
 Our model was run on two machines. The model was successfully trained and inferenced using a Ryzen 7 5700G CPU with NVIDIA RTX 3060 GPU, and 11th gen Intel core vPRO i9 with NVIDIA A5000.
+
+## Results
+Below is a sample output from the ADIFI pipeline using an image selected from the [**WIDER Face**](https://deepai.org/dataset/wider-face) dataset.
+![](https://github.com/ellinj2/Face_Anomaly_Detection/blob/readme/images/0_Parade_Parade_0_782.jpg)
