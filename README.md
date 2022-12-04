@@ -18,4 +18,4 @@ The full paper will be available upon release.
 - **Labeled Image Generation** with negative-log-likelihood scores displayed in bounding boxes
 
 ## Required Hardware
-Our model was run on two machines. The model was successfully trained and inferenced using a Ryzen 5700X CPU with NVIDIA RTX 3060 GPU, and 11th gen Intel core vPRO i9 with NVIDIA A5000.
+Our model was run on two machines. The model was successfully trained and inferenced using a Ryzen 7 5700G CPU with NVIDIA RTX 3060 GPU, and 11th gen Intel core vPRO i9 with NVIDIA A5000.
