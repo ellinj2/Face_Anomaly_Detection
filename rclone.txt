@@ -15,4 +15,3 @@ Instructions for rclone use:
 - Now, before you mount the system with data_downloader.sh, go to your google drive and add a shortcut to this folder to your drive: "https://drive.google.com/open?id=1ZX7QOy6LZuTLTnsOtQk-kmKq2-69l5hu"
 - You're all set!
 - Run data_downloader with FFHQ=1
-- PROFIT?
